@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>JEWELS-AI | AR Capture & WhatsApp Image Share</title>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<style>
+:root { --gold: #d4af37; }
+
+body {
+margin:0;
+background:#111;
+font-family:sans-serif;
+overflow:hidden;
+}
+
+#video-container{
+position:fixed;
+inset:0;
+background:#111;
+z-index:0;
+}
+
+video,canvas{
+position:absolute;
+width:100%;
+height:100%;
+object-fit:cover;
+}
+
+/* UI */
+#jewelry-options{
+position:fixed;
+bottom:80px;
+left:0;
+width:100%;
+height:90px;
+display:flex;
+overflow-x:auto;
+gap:10px;
+padding:10px;
+box-sizing:border-box;
+z-index:10;
+background:rgba(0,0,0,0.5);
+}
+
+#dock{
+position:fixed;
+bottom:0;
+left:0;
+width:100%;
+height:80px;
+background:rgba(0,0,0,0.9);
+display:flex;
+justify-content:space-around;
+align-items:center;
+border-top:1px solid #333;
+z-index:10;
+}
+
+.cat{
+color:white;
+font-size:14px;
+padding:10px 15px;
+border-radius:10px;
+background:#222;
+cursor:pointer;
+transition:0.3s;
+}
+
+.cat.active{
+background:var(--gold);
+color:black;
+font-weight:bold;
+}
+
+/* Capture button */
+
+#capture-trigger{
+position:fixed;
+bottom:180px;
+left:20px;
+width:60px;
+height:60px;
+border-radius:50%;
+background:var(--gold);
+border:none;
+font-size:24px;
+cursor:pointer;
+z-index:20;
+}
+
+/* Preview */
+
+#preview-modal{
+display:none;
+position:fixed;
+inset:0;
+background:rgba(0,0,0,0.95);
+z-index:1000;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+padding:20px;
+}
+
+#preview-image{
+max-width:95%;
+max-height:70%;
+border:1px solid var(--gold);
+}
+
+.preview-actions{
+margin-top:20px;
+display:flex;
+flex-direction:column;
+gap:10px;
+width:100%;
+max-width:350px;
+}
+
+.action-row{
+display:flex;
+gap:10px;
+}
+
+.action-row button{
+flex:1;
+padding:15px;
+border:none;
+border-radius:8px;
+font-weight:bold;
+cursor:pointer;
+}
+
+#download-status{
+color:var(--gold);
+font-size:14px;
+text-align:center;
+height:20px;
+}
+
+.btn-dl{background:var(--gold);color:#000;}
+.btn-wa{background:#25D366;color:#fff;}
+
+.close-preview{
+position:absolute;
+top:20px;
+right:20px;
+color:white;
+font-size:40px;
+cursor:pointer;
+}
+
+#flash-overlay{
+position:fixed;
+inset:0;
+background:white;
+opacity:0;
+pointer-events:none;
+z-index:999;
+}
+</style>
+</head>
+
+<body>
+
+<div id="app">
+
+<div id="flash-overlay"></div>
+
+<div id="video-container">
+<video id="webcam" autoplay playsinline muted></video>
+<canvas id="overlay"></canvas>
+<video id="remote-video" autoplay playsinline></video>
+</div>
+
+<button id="capture-trigger" onclick="runCaptureProcess()">📸</button>
+
+<div id="jewelry-options"></div>
+
+<div id="dock">
+<div class="cat active" onclick="selectJewelryType('earrings', this)">Earrings</div>
+<div class="cat" onclick="selectJewelryType('chains', this)">Chains</div>
+<div class="cat" onclick="selectJewelryType('rings', this)">Rings</div>
+<div class="cat" onclick="selectJewelryType('bangles', this)">Bangles</div>
+</div>
+
+<div id="preview-modal">
+
+<span class="close-preview" onclick="closePreview()">&times;</span>
+
+<img id="preview-image">
+
+<div class="preview-actions">
+
+<div id="download-status"></div>
+
+<div class="action-row">
+<button class="btn-dl" id="dl-btn" onclick="executeDownload()">Download</button>
+<button class="btn-wa" onclick="shareToWA()">WhatsApp Image</button>
+</div>
+
+</div>
+</div>
+
+</div>
+
+<script src="core.js"></script>
+
+<script>
+
+
+/* ✅ CHANGED ONLY THIS FUNCTION */
+
+function getActiveProductInfo(){
+
+const fileName = window.currentJewelry
+? window.currentJewelry.split('/').pop()
+: "A001.png";
+
+const nameOnly = fileName.replace(".png","");
+
+return {
+
+code:nameOnly,
+
+desc:fileName   // ← show file name as description
+
+};
+
+}
+
+
+
+function runCaptureProcess(){
+
+const flash=document.getElementById('flash-overlay');
+flash.style.opacity='1';
+setTimeout(()=>flash.style.opacity='0',150);
+
+const video=document.getElementById('webcam');
+const overlay=document.getElementById('overlay');
+
+const info=getActiveProductInfo();
+
+const c=document.createElement('canvas');
+const ctx=c.getContext('2d');
+
+c.width=video.videoWidth;
+c.height=video.videoHeight;
+
+
+ctx.save();
+ctx.scale(-1,1);
+ctx.drawImage(video,-c.width,0,c.width,c.height);
+ctx.restore();
+
+ctx.drawImage(overlay,0,0,c.width,c.height);
+
+
+
+const boxHeight=120;
+
+ctx.fillStyle="rgba(0,0,0,0.8)";
+ctx.fillRect(0,c.height-boxHeight,c.width,boxHeight);
+
+
+ctx.strokeStyle="#d4af37";
+ctx.lineWidth=4;
+
+ctx.beginPath();
+ctx.moveTo(0,c.height-boxHeight);
+ctx.lineTo(c.width,c.height-boxHeight);
+ctx.stroke();
+
+
+
+ctx.fillStyle="#d4af37";
+ctx.font="bold 26px Arial";
+ctx.fillText("Discription",30,c.height-boxHeight+40);
+
+
+ctx.fillStyle="white";
+ctx.font="22px Arial";
+
+ctx.fillText(info.desc,30,c.height-boxHeight+80);
+
+
+
+document.getElementById('preview-image').src=c.toDataURL('image/png');
+
+document.getElementById('preview-modal').style.display='flex';
+
+document.getElementById('download-status').innerText="";
+
+}
+
+
+
+function executeDownload(){
+
+const status=document.getElementById('download-status');
+
+status.innerText="Downloading...";
+
+setTimeout(()=>{
+
+const dataURL=document.getElementById('preview-image').src;
+
+const link=document.createElement('a');
+
+link.href=dataURL;
+link.download='snapshot.png';
+
+link.click();
+
+status.innerText="Download Completed";
+
+},500);
+
+}
+
+
+
+async function shareToWA(){
+
+const dataURL=document.getElementById('preview-image').src;
+
+const info=getActiveProductInfo();
+
+const r=await fetch(dataURL);
+
+const blob=await r.blob();
+
+const file=new File([blob],'look.png',{type:'image/png'});
+
+if(navigator.canShare && navigator.canShare({files:[file]})){
+
+await navigator.share({
+
+files:[file],
+
+title:'Jewels AI',
+
+text:`Product ${info.desc}`
+
+});
+
+}else{
+
+window.open(
+
+"https://api.whatsapp.com/send?text="+info.desc,
+
+"_blank"
+
+);
+
+}
+
+}
+
+
+
+function closePreview(){
+
+document.getElementById('preview-modal').style.display='none';
+
+}
+
+</script>
+
+</body>
+</html>

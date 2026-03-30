@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>JEWELS-AI | Constellation UI Fixed</title>
+  
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+  <style>
+    :root {
+      --star-gold: #FFD700;
+      --starlight: rgba(255, 255, 255, 0.8);
+      --void-bg: rgba(0, 0, 0, 0.4);
+    }
+
+    body, html {
+      margin: 0; padding: 0;
+      background: #000; color: white;
+      font-family: sans-serif;
+      overflow: hidden; height: 100vh;
+    }
+
+    #video-container { position: fixed; inset: 0; z-index: 0; }
+    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    #webcam { transform: scaleX(-1); }
+
+    /* COSMIC NAVIGATION */
+    #dock {
+      position: fixed; top: 30px; left: 20px; right: 20px;
+      display: flex; justify-content: space-between;
+      z-index: 100;
+    }
+
+    .nav-group { display: flex; gap: 15px; align-items: center; }
+
+    .cat {
+      width: 55px; height: 55px;
+      background: var(--void-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 215, 0, 0.2);
+      border-radius: 50%;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      cursor: pointer; transition: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .cat span {
+      font-size: 8px; text-transform: uppercase;
+      letter-spacing: 1px; margin-top: 4px; color: var(--starlight);
+      opacity: 0; transition: 0.3s;
+    }
+
+    .cat.active {
+      background: #fff; transform: scale(1.1);
+      box-shadow: 0 0 30px #fff, 0 0 60px var(--star-gold);
+      border-color: #fff;
+    }
+    .cat.active .icon { filter: brightness(0); }
+    .cat.active span { opacity: 1; color: #000; font-weight: bold; }
+
+    /* SNAPSHOT BUTTON */
+    .snap-btn {
+      width: 60px; height: 60px; background: white; border: none; border-radius: 50%;
+      cursor: pointer; font-size: 24px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 20px var(--star-gold); z-index: 110;
+    }
+
+    #jewelry-options {
+      position: fixed; bottom: 40px; left: 0; width: 100%;
+      height: 140px; display: flex; 
+      align-items: center; overflow-x: auto;
+      gap: 30px; padding: 0 60px;
+      z-index: 90; scrollbar-width: none;
+      background: radial-gradient(ellipse at bottom, rgba(255,215,0,0.15) 0%, transparent 70%);
+    }
+    #jewelry-options::-webkit-scrollbar { display: none; }
+
+    #jewelry-options img, .thumb-btn {
+      min-width: 90px !important; height: 90px !important;
+      object-fit: contain; background: radial-gradient(circle, rgba(255,215,0,0.1) 0%, transparent 70%);
+      border-radius: 20px; cursor: pointer; transition: 0.5s;
+    }
+
+    /* PREVIEW MODAL */
+    #preview-modal {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98);
+      z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
+    }
+    .preview-box { width: 100%; max-width: 500px; text-align: center; position: relative; }
+    #preview-image { width: 100%; border-radius: 15px; border: 2px solid var(--star-gold); margin-bottom: 20px; }
+    
+    .preview-actions { display: flex; gap: 15px; width: 100%; }
+    .preview-btn { flex: 1; padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 14px; text-transform: uppercase; }
+    .dl-btn { background: var(--star-gold); color: black; }
+    .wa-btn { background: #25D366; color: white; }
+    .close-preview { position: absolute; top: -50px; right: 0; color: white; font-size: 40px; cursor: pointer; }
+    
+    #flash-overlay { position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 999; }
+    .cosmic-overlay { position: fixed; inset: 0; background: radial-gradient(circle at bottom, rgba(255,215,0,0.05) 0%, transparent 50%); pointer-events: none; z-index: 1; }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <div class="cosmic-overlay"></div>
+    <div id="flash-overlay"></div>
+    
+    <div id="video-container">
+      <video id="webcam" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <video id="remote-video" autoplay playsinline></video>
+    </div>
+
+    <div id="dock">
+        <div class="nav-group">
+            <div class="cat active" onclick="handleStarClick('earrings', this)">
+                <div class="icon">✨</div><span>Earrings</span>
+            </div>
+            <div class="cat" onclick="handleStarClick('chains', this)">
+                <div class="icon">💎</div><span>Chains</span>
+            </div>
+        </div>
+        
+        <button class="snap-btn" onclick="captureCosmicSnapshot()">📸</button>
+
+        <div class="nav-group">
+            <div class="cat" onclick="handleStarClick('rings', this)">
+                <div class="icon">💍</div><span>Rings</span>
+            </div>
+            <div class="cat" onclick="handleStarClick('bangles', this)">
+                <div class="icon">☄️</div><span>Bangles</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="jewelry-options"></div>
+
+    <div id="preview-modal">
+        <div class="preview-box">
+            <span class="close-preview" onclick="closePreview()">&times;</span>
+            <img id="preview-image" src="">
+            <div class="preview-actions">
+                <button class="preview-btn dl-btn" onclick="downloadBakedImage()">📥 Download</button>
+                <button class="preview-btn wa-btn" onclick="shareToWhatsApp()">🟢 WhatsApp</button>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <script src="core.js"></script>
+
+  <script>
+    function handleStarClick(type, element) {
+        document.querySelectorAll('.cat').forEach(nav => nav.classList.remove('active'));
+        element.classList.add('active');
+        if (typeof selectJewelryType === "function") selectJewelryType(type);
+    }
+
+    function captureCosmicSnapshot() {
+        const flash = document.getElementById('flash-overlay');
+        flash.style.opacity = '1';
+        setTimeout(() => flash.style.opacity = '0', 150);
+
+        const video = document.getElementById('webcam');
+        const arLayer = document.getElementById('overlay');
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+
+        // 1. Draw Mirror Camera
+        ctx.save();
+        ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        // 2. Draw Jewelry
+        ctx.drawImage(arLayer, 0, 0, canvas.width, canvas.height);
+
+        // 3. Bake Description
+        const fileName = window.currentJewelry ? window.currentJewelry.split('/').pop().split('.')[0] : "Stellar_Selection";
+        const boxH = 120;
+        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+        ctx.fillRect(0, canvas.height - boxH, canvas.width, boxH);
+        ctx.strokeStyle = "#FFD700"; ctx.lineWidth = 4;
+        ctx.strokeRect(0, canvas.height - boxH, canvas.width, boxH);
+
+        ctx.fillStyle = "#FFD700"; ctx.font = "bold 32px Arial";
+        ctx.fillText("Product Description", 40, canvas.height - 75);
+        ctx.fillStyle = "white"; ctx.font = "26px Arial";
+        ctx.fillText("Item Code: " + fileName, 40, canvas.height - 35);
+
+        document.getElementById('preview-image').src = canvas.toDataURL("image/png");
+        document.getElementById('preview-modal').style.display = 'flex';
+    }
+
+    function closePreview() { document.getElementById('preview-modal').style.display = 'none'; }
+
+    function downloadBakedImage() {
+        const link = document.createElement('a');
+        link.download = "Jewels_AI_Snapshot.png";
+        link.href = document.getElementById('preview-image').src;
+        link.click();
+    }
+
+    async function shareToWhatsApp() {
+        const dataUrl = document.getElementById('preview-image').src;
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], 'my_look.png', { type: 'image/png' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: 'Jewels AI',
+                text: 'Check out my jewelry look from the stars! ✨'
+            });
+        } else {
+            window.open(`https://wa.me/919743600311?text=${encodeURIComponent("I'm interested in this piece from Jewels AI!")}`, '_blank');
+        }
+    }
+
+    window.addEventListener('load', () => {
+        setTimeout(() => {
+            const activeBtn = document.querySelector('.cat.active');
+            if (activeBtn) handleStarClick('earrings', activeBtn);
+        }, 1200);
+    });
+  </script>
+</body>
+</html>

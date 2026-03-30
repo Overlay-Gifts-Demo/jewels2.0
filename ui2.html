@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+
+<title>JEWELS-AI | AR Capture</title>
+
+<link rel="stylesheet" href="style.css"/>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<style>
+body{
+margin:0;
+background:black;
+overflow:hidden;
+font-family:Arial;
+}
+
+#video-container{
+position:fixed;
+inset:0;
+}
+
+#webcam,#overlay,#remote-video{
+position:absolute;
+width:100%;
+height:100%;
+object-fit:cover;
+}
+
+#webcam{
+transform:scaleX(-1);
+}
+
+#side-nav{
+position:absolute;
+top:20px;
+left:20px;
+width:110px;
+background:rgba(0,0,0,0.7);
+padding:10px;
+border-radius:10px;
+z-index:20;
+}
+
+.cat{
+background:#222;
+color:white;
+padding:10px;
+margin:5px 0;
+text-align:center;
+border-radius:6px;
+cursor:pointer;
+}
+
+.cat.active{
+background:#d4af37;
+color:black;
+}
+
+#jewelry-options{
+position:fixed;
+bottom:0;
+left:0;
+right:0;
+height:110px;
+background:rgba(0,0,0,0.8);
+display:flex;
+overflow-x:auto;
+padding:20px;
+z-index:15;
+}
+
+#preview-modal{
+display:none;
+position:fixed;
+inset:0;
+background:rgba(0,0,0,0.98);
+z-index:1000;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+}
+
+.preview-container{
+width:85%;
+max-width:420px;
+border:3px solid #d4af37;
+border-radius:14px;
+overflow:hidden;
+background:black;
+position:relative;
+}
+
+#preview-image{
+width:100%;
+display:block;
+}
+
+.close-preview{
+position:absolute;
+top:-60px;
+right:0;
+color:white;
+font-size:40px;
+cursor:pointer;
+}
+
+.preview-buttons{
+position:fixed;
+bottom:20px;
+left:0;
+width:100%;
+display:flex;
+gap:15px;
+padding:0 20px;
+box-sizing:border-box;
+}
+
+.preview-btn{
+flex:1;
+padding:18px;
+font-size:18px;
+border:none;
+border-radius:12px;
+font-weight:bold;
+cursor:pointer;
+}
+
+.dl-btn{ background:#d4af37; color:black; }
+.wa-btn{ background:#25D366; color:white; }
+
+#flash-overlay{
+position:fixed;
+inset:0;
+background:white;
+opacity:0;
+z-index:999;
+pointer-events:none;
+}
+
+.pill-btn {
+background:#222;
+border:1px solid #444;
+color:white;
+border-radius:50px;
+padding:10px;
+margin-top:10px;
+width:100%;
+cursor:pointer;
+display:flex;
+justify-content:center;
+}
+</style>
+</head>
+
+<body>
+
+<div id="app">
+
+<div id="flash-overlay"></div>
+
+<div id="video-container">
+<video id="webcam" autoplay playsinline muted></video>
+<canvas id="overlay"></canvas>
+<video id="remote-video" autoplay playsinline></video>
+
+<div id="side-nav">
+<div class="cat active" onclick="selectJewelryType('earrings',this)">Earrings</div>
+<div class="cat" onclick="selectJewelryType('chains',this)">Chains</div>
+<div class="cat" onclick="selectJewelryType('rings',this)">Rings</div>
+<div class="cat" onclick="selectJewelryType('bangles',this)">Bangles</div>
+
+<button class="pill-btn" onclick="processCapture()">
+📸
+</button>
+
+</div>
+</div>
+
+<div id="jewelry-options"></div>
+
+<div id="preview-modal">
+<div class="preview-container">
+<span class="close-preview" onclick="closePreview()">&times;</span>
+<img id="preview-image">
+</div>
+
+<div class="preview-buttons">
+<button class="preview-btn dl-btn" onclick="downloadImage()">Download</button>
+<button class="preview-btn wa-btn" onclick="shareToWhatsApp()">WhatsApp Image</button>
+</div>
+
+</div>
+</div>
+
+<script src="core.js"></script>
+
+<script>
+
+function processCapture(){
+
+const flash=document.getElementById("flash-overlay");
+flash.style.opacity=1;
+setTimeout(()=>flash.style.opacity=0,150);
+
+const video=document.getElementById("webcam");
+const canvas=document.getElementById("overlay");
+
+const merge=document.createElement("canvas");
+const ctx=merge.getContext("2d");
+
+merge.width=video.videoWidth||1280;
+merge.height=video.videoHeight||720;
+
+ctx.save();
+ctx.scale(-1,1);
+ctx.drawImage(video,-merge.width,0,merge.width,merge.height);
+ctx.restore();
+
+ctx.drawImage(canvas,0,0,merge.width,merge.height);
+
+
+/* ===== filename only ===== */
+
+let name="";
+
+if(window.currentJewelry){
+name=window.currentJewelry.split('/').pop().split('.')[0].toUpperCase();
+}
+
+ctx.fillStyle="rgba(0,0,0,0.8)";
+ctx.fillRect(0,merge.height-90,merge.width,90);
+
+ctx.strokeStyle="#d4af37";
+ctx.lineWidth=4;
+ctx.strokeRect(0,merge.height-90,merge.width,90);
+
+ctx.fillStyle="white";
+ctx.font="bold 32px Arial";
+ctx.fillText(name,30,merge.height-35);
+
+
+/* ========================= */
+
+const url=merge.toDataURL();
+
+document.getElementById("preview-image").src=url;
+document.getElementById("preview-modal").style.display="flex";
+
+}
+
+
+function closePreview(){
+document.getElementById("preview-modal").style.display="none";
+}
+
+function downloadImage(){
+const a=document.createElement("a");
+a.href=document.getElementById("preview-image").src;
+a.download="jewels_ai.png";
+a.click();
+}
+
+function shareToWhatsApp(){
+window.open("https://wa.me/9743600311","_blank");
+}
+
+</script>
+
+</body>
+</html>

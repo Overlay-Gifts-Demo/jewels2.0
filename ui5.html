@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>JEWELS-AI | Prism UI Fixed</title>
+  
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+  <style>
+    :root {
+      --prism-gold: #FFD700;
+      --deep-void: #000;
+    }
+
+    body, html {
+      margin: 0; padding: 0;
+      background: var(--deep-void);
+      color: white; font-family: sans-serif;
+      overflow: hidden; height: 100vh;
+    }
+
+    #video-container { position: fixed; inset: 0; z-index: 0; }
+    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    #webcam { transform: scaleX(-1); }
+
+    /* SIDE NAVIGATION */
+    #dock {
+      position: fixed; right: 20px; top: 50%;
+      transform: translateY(-50%);
+      display: flex; flex-direction: column;
+      gap: 12px; z-index: 100;
+    }
+
+    .cat {
+      width: 65px; height: 65px;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 11px; font-weight: bold;
+      text-transform: uppercase; color: #fff;
+      transition: 0.3s;
+      text-align: center;
+    }
+    .cat.active { background: var(--prism-gold); color: #000; transform: scale(1.1) translateX(-5px); }
+
+    /* SNAPSHOT BUTTON */
+    .snap-btn {
+      width: 65px; height: 65px; background: white; border: none; border-radius: 50%;
+      cursor: pointer; font-size: 24px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-top: 10px;
+    }
+
+    #jewelry-options {
+      position: fixed; bottom: 30px; left: 20px; right: 100px;
+      height: 120px; display: flex; align-items: center;
+      overflow-x: auto; gap: 15px; padding: 10px;
+      z-index: 90; background: rgba(0,0,0,0.3); border-radius: 20px;
+    }
+    #jewelry-options::-webkit-scrollbar { display: none; }
+
+    #jewelry-options img, .thumb-btn {
+      min-width: 90px !important; max-width: 90px !important; height: 90px !important;
+      background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 15px; object-fit: contain; cursor: pointer; transition: 0.3s;
+    }
+
+    /* PREVIEW MODAL */
+    #preview-modal {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95);
+      z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
+    }
+    #preview-image { max-width: 90%; max-height: 65%; border-radius: 15px; border: 2px solid var(--prism-gold); }
+    
+    .preview-actions { margin-top: 25px; display: flex; gap: 15px; width: 100%; max-width: 400px; }
+    .preview-actions button {
+      flex: 1; padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;
+    }
+    .btn-dl { background: var(--prism-gold); color: black; }
+    .btn-wa { background: #25D366; color: white; }
+    .close-preview { position: absolute; top: 30px; right: 30px; font-size: 40px; cursor: pointer; }
+    
+    #flash-overlay { position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 999; }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <div id="flash-overlay"></div>
+
+    <div id="video-container">
+      <video id="webcam" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <video id="remote-video" autoplay playsinline></video>
+    </div>
+
+    <div id="dock">
+      <div class="cat active" onclick="handleCategoryClick('earrings', this)">Earrings</div>
+      <div class="cat" onclick="handleCategoryClick('chains', this)">Chains</div>
+      <div class="cat" onclick="handleCategoryClick('rings', this)">Rings</div>
+      <div class="cat" onclick="handleCategoryClick('bangles', this)">Bangles</div>
+      <button class="snap-btn" onclick="captureProcess()">📸</button>
+    </div>
+
+    <div id="jewelry-options"></div>
+
+    <div id="preview-modal">
+        <span class="close-preview" onclick="closePreview()">&times;</span>
+        <img id="preview-image" src="">
+        <div class="preview-actions">
+            <button class="btn-dl" onclick="downloadBakedImage()">📥 DOWNLOAD</button>
+            <button class="btn-wa" onclick="shareToWhatsApp()">🟢 WHATSAPP</button>
+        </div>
+    </div>
+  </div>
+
+  <script src="core.js"></script>
+
+  <script>
+    function handleCategoryClick(type, element) {
+        document.querySelectorAll('.cat').forEach(nav => nav.classList.remove('active'));
+        element.classList.add('active');
+        if (typeof selectJewelryType === "function") selectJewelryType(type);
+    }
+
+    // Capture & Merge Logic
+    function captureProcess() {
+        const flash = document.getElementById('flash-overlay');
+        flash.style.opacity = '1';
+        setTimeout(() => flash.style.opacity = '0', 150);
+
+        const video = document.getElementById('webcam');
+        const overlay = document.getElementById('overlay');
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+
+        // 1. Draw Camera (Mirrored)
+        ctx.save();
+        ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        // 2. Draw Jewelry
+        ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+
+        // 3. Bake Description
+        const fileName = window.currentJewelry ? window.currentJewelry.split('/').pop().split('.')[0] : "Product_Selection";
+        const boxH = 120;
+        ctx.fillStyle = "rgba(0,0,0,0.8)";
+        ctx.fillRect(0, canvas.height - boxH, canvas.width, boxH);
+        ctx.strokeStyle = "#FFD700"; ctx.lineWidth = 4;
+        ctx.strokeRect(0, canvas.height - boxH, canvas.width, boxH);
+
+        ctx.fillStyle = "#FFD700"; ctx.font = "bold 30px Arial";
+        ctx.fillText("Product Description", 30, canvas.height - 70);
+        ctx.fillStyle = "white"; ctx.font = "24px Arial";
+        ctx.fillText("Item Code: " + fileName, 30, canvas.height - 30);
+
+        document.getElementById('preview-image').src = canvas.toDataURL("image/png");
+        document.getElementById('preview-modal').style.display = 'flex';
+    }
+
+    function closePreview() { document.getElementById('preview-modal').style.display = 'none'; }
+
+    function downloadBakedImage() {
+        const link = document.createElement('a');
+        link.download = "My_Jewels_Look.png";
+        link.href = document.getElementById('preview-image').src;
+        link.click();
+    }
+
+    async function shareToWhatsApp() {
+        const dataUrl = document.getElementById('preview-image').src;
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], 'my_look.png', { type: 'image/png' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: 'Jewels AI',
+                text: 'Check out my look! ✨'
+            });
+        } else {
+            window.open(`https://wa.me/919743600311?text=${encodeURIComponent("Check out my Jewels AI look!")}`, '_blank');
+        }
+    }
+
+    window.addEventListener('load', () => {
+        setTimeout(() => {
+            const activeBtn = document.querySelector('.cat.active');
+            if (activeBtn) handleCategoryClick('earrings', activeBtn);
+        }, 1000); 
+    });
+  </script>
+</body>
+</html>

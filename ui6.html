@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>JEWELS-AI | Orbital HUD Fixed</title>
+  
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+  <style>
+    :root {
+      --hud-gold: #FFD700;
+      --hud-glow: rgba(255, 215, 0, 0.4);
+      --hud-glass: rgba(0, 0, 0, 0.5);
+    }
+
+    body, html {
+      margin: 0; padding: 0;
+      background: #000; color: white;
+      font-family: sans-serif;
+      overflow: hidden; height: 100vh;
+    }
+
+    #video-container { position: fixed; inset: 0; z-index: 0; }
+    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    #webcam { transform: scaleX(-1); }
+
+    /* HUD CATEGORY ARC (Left Side) */
+    #dock {
+      position: fixed; left: -20px; top: 50%;
+      transform: translateY(-50%);
+      display: flex; flex-direction: column;
+      gap: 20px; z-index: 100;
+      padding-left: 40px;
+    }
+
+    .cat {
+      width: 100px; height: 35px;
+      background: var(--hud-glass);
+      backdrop-filter: blur(10px);
+      border-left: 4px solid var(--hud-gold);
+      display: flex; align-items: center; padding-left: 15px;
+      cursor: pointer; font-size: 10px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 2px;
+      transition: 0.4s ease;
+      clip-path: polygon(0% 0%, 90% 0%, 100% 50%, 90% 100%, 0% 100%);
+    }
+
+    .cat.active {
+      width: 130px; background: var(--hud-gold); color: #000;
+      box-shadow: 0 0 20px var(--hud-glow); border-left: 6px solid #fff;
+    }
+
+    /* CAPTURE BUTTON (Orbital) */
+    .snap-btn {
+      width: 50px; height: 50px; border-radius: 50%; background: white;
+      border: 2px solid var(--hud-gold); color: black; font-size: 20px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      margin-left: 20px; transition: 0.3s;
+    }
+
+    #jewelry-options {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+      width: 90%; max-width: 800px; height: 120px; display: flex;
+      align-items: center; overflow-x: auto; gap: 20px; padding: 10px 40px;
+      z-index: 90; scrollbar-width: none;
+      background: radial-gradient(ellipse at bottom, rgba(255,215,0,0.15) 0%, transparent 70%);
+    }
+    #jewelry-options::-webkit-scrollbar { display: none; }
+
+    #jewelry-options img, .thumb-btn {
+      min-width: 85px !important; max-width: 85px !important; height: 85px !important;
+      border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 50%;
+      background: rgba(0, 0, 0, 0.6); padding: 10px; object-fit: contain;
+      cursor: pointer; transition: 0.3s;
+    }
+
+    /* PREVIEW MODAL */
+    #preview-modal {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.98); z-index: 1000;
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .preview-box { width: 100%; max-width: 500px; text-align: center; position: relative; }
+    #preview-image { width: 100%; border-radius: 12px; border: 2px solid var(--hud-gold); margin-bottom: 20px; }
+    
+    .preview-actions { display: flex; gap: 15px; width: 100%; }
+    .action-btn { flex: 1; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; text-transform: uppercase; }
+    .dl-btn { background: var(--hud-gold); color: black; }
+    .wa-btn { background: #25D366; color: white; }
+    .close-preview { position: absolute; top: -50px; right: 0; color: white; font-size: 40px; cursor: pointer; }
+
+    #flash-overlay { position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 999; }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <div id="flash-overlay"></div>
+
+    <div id="video-container">
+      <video id="webcam" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <video id="remote-video" autoplay playsinline></video>
+    </div>
+
+    <div id="dock">
+      <div class="cat active" onclick="handleHUDClick('earrings', this)">Earrings</div>
+      <div class="cat" onclick="handleHUDClick('chains', this)">Chains</div>
+      <div class="cat" onclick="handleHUDClick('rings', this)">Rings</div>
+      <div class="cat" onclick="handleHUDClick('bangles', this)">Bangles</div>
+      <button class="snap-btn" onclick="captureHUDSnapshot()">📸</button>
+    </div>
+
+    <div id="jewelry-options"></div>
+
+    <div id="preview-modal">
+        <div class="preview-box">
+            <span class="close-preview" onclick="closePreview()">&times;</span>
+            <img id="preview-image" src="">
+            <div class="preview-actions">
+                <button class="action-btn dl-btn" onclick="downloadBakedImage()">📥 Download</button>
+                <button class="action-btn wa-btn" onclick="shareToWhatsApp()">🟢 WhatsApp</button>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <script src="core.js"></script>
+
+  <script>
+    function handleHUDClick(type, element) {
+        document.querySelectorAll('.cat').forEach(nav => nav.classList.remove('active'));
+        element.classList.add('active');
+        if (typeof selectJewelryType === "function") selectJewelryType(type);
+    }
+
+    function captureHUDSnapshot() {
+        // Flash Effect
+        const flash = document.getElementById('flash-overlay');
+        flash.style.opacity = '1';
+        setTimeout(() => flash.style.opacity = '0', 150);
+
+        const video = document.getElementById('webcam');
+        const arLayer = document.getElementById('overlay');
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+
+        // 1. Draw Mirrored Camera
+        ctx.save();
+        ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        // 2. Draw Jewelry
+        ctx.drawImage(arLayer, 0, 0, canvas.width, canvas.height);
+
+        // 3. Bake Description Box
+        const fileName = window.currentJewelry ? window.currentJewelry.split('/').pop().split('.')[0] : "Product_Selection";
+        const boxH = 120;
+        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+        ctx.fillRect(0, canvas.height - boxH, canvas.width, boxH);
+        ctx.strokeStyle = "#FFD700"; ctx.lineWidth = 4;
+        ctx.strokeRect(0, canvas.height - boxH, canvas.width, boxH);
+
+        ctx.fillStyle = "#FFD700"; ctx.font = "bold 30px Arial";
+        ctx.fillText("Product Description", 30, canvas.height - 70);
+        ctx.fillStyle = "white"; ctx.font = "24px Arial";
+        ctx.fillText("Code: " + fileName, 30, canvas.height - 30);
+
+        document.getElementById('preview-image').src = canvas.toDataURL("image/png");
+        document.getElementById('preview-modal').style.display = 'flex';
+    }
+
+    function closePreview() { document.getElementById('preview-modal').style.display = 'none'; }
+
+    function downloadBakedImage() {
+        const link = document.createElement('a');
+        link.download = "Jewels_AI_Snapshot.png";
+        link.href = document.getElementById('preview-image').src;
+        link.click();
+    }
+
+    async function shareToWhatsApp() {
+        const dataUrl = document.getElementById('preview-image').src;
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], 'my_look.png', { type: 'image/png' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: 'Jewels AI',
+                text: 'Check out my jewelry look! ✨'
+            });
+        } else {
+            window.open(`https://wa.me/919743600311?text=${encodeURIComponent("I'm interested in this piece from Jewels AI!")}`, '_blank');
+        }
+    }
+
+    window.addEventListener('load', () => {
+        setTimeout(() => {
+            const activeBtn = document.querySelector('.cat.active');
+            if (activeBtn) handleHUDClick('earrings', activeBtn);
+        }, 1200);
+    });
+  </script>
+</body>
+</html>
