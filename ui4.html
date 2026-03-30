@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>JEWELS·AI — Couture Try-On</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,522 +16,319 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 
   <style>
-    /* ───────────────────────────────────────────
-       TOKENS & RESET
-    ─────────────────────────────────────────── */
     :root {
-      --gold-light:    #F0D080;
-      --gold-main:     #C9A84C;
-      --gold-dark:     #7B5E1A;
-      --gold-shine:    #FFF3B0;
-      --obsidian:      #080808;
-      --surface:       #0f0f0f;
-      --surface-2:     #181818;
-      --surface-3:     #242424;
-      --border:        rgba(201,168,76,0.18);
-      --text-primary:  #F5EDD6;
-      --text-muted:    rgba(245,237,214,0.45);
-      --radius-lg:     20px;
-      --radius-pill:   999px;
-      --font-display:  'Cormorant Garamond', serif;
-      --font-ui:       'Tenor Sans', serif;
-      --font-body:     'Montserrat', sans-serif;
+      --gold-light:   #F0D080;
+      --gold-main:    #C9A84C;
+      --gold-dark:    #7B5E1A;
+      --gold-shine:   #FFF3B0;
+      --obsidian:     #080808;
+      --surface-2:    #181818;
+      --surface-3:    #242424;
+      --border:       rgba(201,168,76,0.18);
+      --text-primary: #F5EDD6;
+      --text-muted:   rgba(245,237,214,0.45);
+      --radius-pill:  999px;
+      --font-display: 'Cormorant Garamond', serif;
+      --font-ui:      'Tenor Sans', serif;
+      --font-body:    'Montserrat', sans-serif;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: var(--obsidian); color: var(--text-primary); font-family: var(--font-body); }
 
-    html, body {
-      height: 100%; overflow: hidden;
-      background: var(--obsidian);
-      color: var(--text-primary);
-      font-family: var(--font-body);
-      cursor: crosshair;
-    }
-
-    /* ───────────────────────────────────────────
-       NOISE GRAIN OVERLAY
-    ─────────────────────────────────────────── */
+    /* grain */
     body::before {
-      content: '';
-      position: fixed; inset: 0; z-index: 1000; pointer-events: none;
-      opacity: 0.035;
+      content: ''; position: fixed; inset: 0; z-index: 1000; pointer-events: none; opacity: 0.035;
       background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
       background-size: 200px 200px;
     }
 
-    /* ───────────────────────────────────────────
-       VIDEO STAGE
-    ─────────────────────────────────────────── */
-    #stage {
-      position: fixed; inset: 0; z-index: 0;
-    }
-
-    #webcam, #overlay, #remote-video {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
-    }
-
+    /* STAGE */
+    #stage { position: fixed; inset: 0; z-index: 0; }
+    #webcam, #overlay, #remote-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
     #webcam { transform: scaleX(-1); }
-
-    /* Vignette */
     #stage::after {
-      content: '';
-      position: absolute; inset: 0;
+      content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 5;
       background: radial-gradient(ellipse at center, transparent 40%, rgba(8,8,8,0.85) 100%);
-      pointer-events: none; z-index: 5;
     }
 
-    /* ───────────────────────────────────────────
-       HEADER WORDMARK
-    ─────────────────────────────────────────── */
+    /* LOADING — core.js hides this via loadingStatus.style.display = 'none' */
+    #loading-status {
+      position: fixed; inset: 0; z-index: 900; background: var(--obsidian);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    }
+    .ld-brand {
+      font-family: var(--font-display); font-size: 44px; font-weight: 300; letter-spacing: 0.2em; text-transform: uppercase;
+      background: linear-gradient(135deg, var(--gold-shine), var(--gold-main), var(--gold-dark));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .ld-sub { font-size: 9px; font-weight: 200; letter-spacing: 0.45em; text-transform: uppercase; color: var(--text-muted); }
+    .ld-bar { width: 140px; height: 1px; background: rgba(201,168,76,0.15); border-radius: 1px; overflow: hidden; }
+    .ld-fill { height: 100%; background: linear-gradient(90deg, var(--gold-dark), var(--gold-light)); animation: ldFill 1.4s ease-in-out infinite alternate; }
+    @keyframes ldFill { from{width:8%} to{width:92%} }
+
+    /* WORDMARK */
     #wordmark {
-      position: fixed; top: 28px; left: 50%;
-      transform: translateX(-50%);
-      z-index: 50;
-      text-align: center;
-      animation: fadeDown 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+      position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
+      z-index: 50; text-align: center;
+      animation: fadeDown 1.2s cubic-bezier(0.16,1,0.3,1) both;
     }
-
     #wordmark h1 {
-      font-family: var(--font-display);
-      font-size: clamp(22px, 3vw, 36px);
-      font-weight: 300;
-      letter-spacing: 0.35em;
-      text-transform: uppercase;
+      font-family: var(--font-display); font-size: clamp(20px,3vw,34px); font-weight: 300;
+      letter-spacing: 0.35em; text-transform: uppercase;
       background: linear-gradient(135deg, var(--gold-shine) 0%, var(--gold-main) 45%, var(--gold-dark) 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
+    #wordmark p { font-size: 8px; font-weight: 200; letter-spacing: 0.5em; text-transform: uppercase; color: var(--text-muted); margin-top: 4px; }
 
-    #wordmark p {
-      font-family: var(--font-body);
-      font-size: 9px; font-weight: 200;
-      letter-spacing: 0.5em; text-transform: uppercase;
-      color: var(--text-muted);
-      margin-top: 4px;
-    }
-
-    /* ───────────────────────────────────────────
-       STATUS PILL
-    ─────────────────────────────────────────── */
+    /* STATUS PILL */
     #status-pill {
-      position: fixed; top: 28px; right: 28px;
-      z-index: 50;
-      display: flex; align-items: center; gap: 8px;
-      padding: 7px 16px;
-      background: rgba(15,15,15,0.7);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-pill);
-      backdrop-filter: blur(20px);
-      font-family: var(--font-body);
-      font-size: 9px; font-weight: 300; letter-spacing: 0.3em;
-      color: var(--text-muted); text-transform: uppercase;
-      animation: fadeDown 1.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+      position: fixed; top: 24px; right: 24px; z-index: 50;
+      display: flex; align-items: center; gap: 8px; padding: 7px 16px;
+      background: rgba(15,15,15,0.7); border: 1px solid var(--border);
+      border-radius: var(--radius-pill); backdrop-filter: blur(20px);
+      font-size: 9px; font-weight: 300; letter-spacing: 0.3em; text-transform: uppercase; color: var(--text-muted);
     }
-
     #status-dot {
       width: 6px; height: 6px; border-radius: 50%;
-      background: var(--gold-main);
-      box-shadow: 0 0 8px var(--gold-main);
+      background: var(--gold-main); box-shadow: 0 0 8px var(--gold-main);
       animation: pulse-dot 2s ease-in-out infinite;
     }
+    @keyframes pulse-dot { 0%,100%{opacity:1;box-shadow:0 0 8px var(--gold-main)} 50%{opacity:0.5;box-shadow:0 0 3px var(--gold-main)} }
 
-    @keyframes pulse-dot {
-      0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--gold-main); }
-      50% { opacity: 0.5; box-shadow: 0 0 3px var(--gold-main); }
-    }
-
-    /* ───────────────────────────────────────────
-       CATEGORY RAIL (LEFT)
-    ─────────────────────────────────────────── */
+    /* CATEGORY RAIL */
     #category-rail {
-      position: fixed; left: 24px; top: 50%;
-      transform: translateY(-50%);
-      z-index: 40;
-      display: flex; flex-direction: column; gap: 8px;
-      animation: fadeRight 1.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+      position: fixed; left: 20px; top: 50%; transform: translateY(-50%);
+      z-index: 40; display: flex; flex-direction: column; gap: 8px;
+      animation: fadeRight 1.3s cubic-bezier(0.16,1,0.3,1) both;
     }
-
     .cat-btn {
-      position: relative;
-      width: 42px;
-      padding: 14px 0;
+      position: relative; width: 44px; padding: 14px 0;
       display: flex; align-items: center; justify-content: center;
-      background: rgba(15,15,15,0.75);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      cursor: pointer;
-      transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-      overflow: hidden;
-      backdrop-filter: blur(16px);
+      background: rgba(15,15,15,0.75); border: 1px solid var(--border); border-radius: 14px;
+      cursor: pointer; overflow: hidden; backdrop-filter: blur(16px);
+      transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1);
     }
-
     .cat-btn span {
-      writing-mode: vertical-rl;
-      text-orientation: mixed;
-      font-family: var(--font-ui);
-      font-size: 9px; letter-spacing: 0.25em;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      transition: color 0.3s;
-      transform: rotate(180deg);
+      writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);
+      font-family: var(--font-ui); font-size: 9px; letter-spacing: 0.25em; text-transform: uppercase;
+      color: var(--text-muted); transition: color 0.3s; position: relative; z-index: 1;
     }
-
     .cat-btn::before {
-      content: '';
-      position: absolute; inset: 0;
+      content: ''; position: absolute; inset: 0;
       background: linear-gradient(180deg, var(--gold-light) 0%, var(--gold-dark) 100%);
       opacity: 0; transition: opacity 0.4s;
     }
-
-    .cat-btn.active {
-      border-color: var(--gold-main);
-      box-shadow: 0 0 24px rgba(201,168,76,0.25), inset 0 0 20px rgba(201,168,76,0.07);
-      padding: 22px 0;
-    }
-
+    .cat-btn.active { border-color: var(--gold-main); padding: 22px 0; box-shadow: 0 0 24px rgba(201,168,76,0.25); }
     .cat-btn.active::before { opacity: 1; }
+    .cat-btn.active span { color: var(--obsidian); font-weight: 600; }
+    .cat-btn:hover:not(.active) { border-color: rgba(201,168,76,0.4); transform: translateX(3px); }
 
-    .cat-btn.active span {
-      color: var(--obsidian);
-      font-weight: 600;
-      position: relative; z-index: 1;
-    }
-
-    .cat-btn:hover:not(.active) {
-      border-color: rgba(201,168,76,0.4);
-      transform: translateX(3px);
-    }
-
-    /* ───────────────────────────────────────────
-       JEWELRY CAROUSEL (BOTTOM)
-    ─────────────────────────────────────────── */
-    #carousel-wrap {
+    /* ══════════════════════════════════════════
+       JEWELRY STRIP
+       core.js appends .thumb-btn <img> elements directly into #jewelry-options.
+       This div must exist at the exact ID "jewelry-options".
+       We style it as the glass tray.
+    ══════════════════════════════════════════ */
+    #jewelry-options {
       position: fixed;
       bottom: 0; left: 0; right: 0;
       z-index: 40;
-      padding: 0 90px 36px 90px;
-      animation: fadeUp 1.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-    }
-
-    /* Glass tray */
-    #carousel-tray {
-      display: flex; gap: 14px;
-      align-items: flex-end;
-      overflow-x: auto; overflow-y: hidden;
-      padding: 20px 20px 20px;
-      background: linear-gradient(135deg, rgba(18,18,18,0.92) 0%, rgba(12,12,12,0.88) 100%);
-      border: 1px solid var(--border);
-      border-radius: 24px;
+      /* glass tray */
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 18px 90px 32px;
+      background: linear-gradient(135deg, rgba(18,18,18,0.93) 0%, rgba(10,10,10,0.89) 100%);
+      border-top: 1px solid var(--border);
       backdrop-filter: blur(32px) saturate(1.2);
       scrollbar-width: none;
-      -webkit-mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+      min-height: 110px;
     }
+    #jewelry-options::-webkit-scrollbar { display: none; }
 
-    #carousel-tray::-webkit-scrollbar { display: none; }
-
-    .jewel-card {
-      flex-shrink: 0;
-      width: 82px; height: 82px;
+    /* thumb images injected by core.js */
+    .thumb-btn {
+      flex-shrink: 0 !important;
+      width: 76px !important; height: 76px !important;
+      border-radius: 18px !important;
+      object-fit: contain !important;
+      padding: 7px;
       background: var(--surface-3);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border) !important;
+      cursor: pointer;
+      transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1) !important;
+    }
+    .thumb-btn:hover {
+      transform: translateY(-8px) scale(1.07) !important;
+      border-color: var(--gold-main) !important;
+      box-shadow: 0 16px 32px rgba(0,0,0,0.5), 0 0 20px rgba(201,168,76,0.22) !important;
+    }
+
+    /* skeleton cards injected by core.js */
+    .thumb-skeleton {
+      flex-shrink: 0 !important;
+      width: 76px !important; height: 76px !important;
       border-radius: 18px;
-      overflow: hidden;
-      cursor: pointer;
-      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-      position: relative;
-    }
-
-    .jewel-card img {
-      width: 100%; height: 100%;
-      object-fit: contain; padding: 8px;
-      transition: transform 0.3s;
-    }
-
-    .jewel-card:hover {
-      transform: translateY(-8px) scale(1.06);
-      border-color: var(--gold-main);
-      box-shadow: 0 16px 32px rgba(0,0,0,0.5), 0 0 18px rgba(201,168,76,0.2);
-    }
-
-    .jewel-card.selected {
-      border-color: var(--gold-light);
-      box-shadow: 0 0 0 2px var(--gold-main), 0 12px 28px rgba(201,168,76,0.3);
-      transform: translateY(-6px);
-    }
-
-    .jewel-card.selected::after {
-      content: '✦';
-      position: absolute; top: 4px; right: 6px;
-      font-size: 9px; color: var(--gold-light);
-    }
-
-    /* ───────────────────────────────────────────
-       SHUTTER BUTTON
-    ─────────────────────────────────────────── */
-    #shutter {
-      position: fixed; bottom: 42px; right: 32px;
-      z-index: 50;
-      width: 64px; height: 64px;
-      border-radius: 50%;
-      background: conic-gradient(var(--gold-shine), var(--gold-main), var(--gold-dark), var(--gold-main), var(--gold-shine));
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      box-shadow: 0 0 40px rgba(201,168,76,0.35), 0 8px 24px rgba(0,0,0,0.5);
-      animation: fadeUp 1.6s cubic-bezier(0.16, 1, 0.3, 1) both;
-      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s;
-    }
-
-    #shutter:hover {
-      transform: scale(1.1);
-      box-shadow: 0 0 60px rgba(201,168,76,0.55), 0 8px 32px rgba(0,0,0,0.6);
-    }
-
-    #shutter:active { transform: scale(0.94); }
-
-    #shutter-inner {
-      width: 50px; height: 50px; border-radius: 50%;
-      background: var(--obsidian);
-      border: 1.5px solid rgba(201,168,76,0.3);
-      display: flex; align-items: center; justify-content: center;
-      transition: background 0.2s;
-    }
-
-    #shutter:hover #shutter-inner { background: #111; }
-
-    #shutter-icon {
-      width: 22px; height: 22px;
-      border: 2px solid var(--gold-main);
-      border-radius: 5px;
-      position: relative;
-    }
-
-    #shutter-icon::before {
-      content: '';
-      position: absolute; top: -6px; left: 50%;
-      transform: translateX(-50%);
-      width: 8px; height: 4px;
-      border: 2px solid var(--gold-main);
-      border-radius: 2px 2px 0 0;
-      border-bottom: none;
-    }
-
-    /* ───────────────────────────────────────────
-       FLASH
-    ─────────────────────────────────────────── */
-    #flash {
-      position: fixed; inset: 0; z-index: 900;
-      background: #fff; opacity: 0; pointer-events: none;
-      transition: opacity 0.08s;
-    }
-
-    /* ───────────────────────────────────────────
-       PREVIEW MODAL
-    ─────────────────────────────────────────── */
-    #preview-modal {
-      display: none;
-      position: fixed; inset: 0; z-index: 800;
-      background: rgba(4,4,4,0.96);
-      flex-direction: column; align-items: center; justify-content: center;
-      padding: 32px;
-      backdrop-filter: blur(40px);
-      animation: fadeIn 0.4s ease both;
-    }
-
-    #preview-modal.open { display: flex; }
-
-    #preview-frame {
-      position: relative;
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      overflow: hidden;
-      box-shadow: 0 40px 80px rgba(0,0,0,0.8), 0 0 0 1px var(--gold-dark);
-      max-width: 90vw; max-height: 62vh;
-    }
-
-    #preview-image {
-      display: block;
-      max-width: 100%; max-height: 62vh;
-    }
-
-    /* Gold corner accents */
-    #preview-frame::before, #preview-frame::after {
-      content: '';
-      position: absolute;
-      width: 22px; height: 22px;
-      border-color: var(--gold-light);
-      border-style: solid;
-      z-index: 2;
-    }
-    #preview-frame::before { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
-    #preview-frame::after  { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
-
-    #preview-label {
-      margin-top: 8px;
-      font-family: var(--font-display);
-      font-size: 11px; letter-spacing: 0.4em;
-      color: var(--text-muted); text-transform: uppercase;
-    }
-
-    #preview-actions {
-      margin-top: 24px;
-      display: flex; gap: 14px;
-    }
-
-    .act-btn {
-      padding: 13px 30px;
-      border-radius: var(--radius-pill);
-      font-family: var(--font-body);
-      font-size: 10px; font-weight: 300;
-      letter-spacing: 0.3em; text-transform: uppercase;
-      border: none; cursor: pointer;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-
-    .act-btn:hover { transform: translateY(-2px); }
-
-    .act-btn-gold {
-      background: linear-gradient(135deg, var(--gold-light) 0%, var(--gold-main) 100%);
-      color: var(--obsidian);
-    }
-
-    .act-btn-wa {
-      background: rgba(37, 211, 102, 0.12);
-      border: 1px solid rgba(37, 211, 102, 0.4);
-      color: #5bf08a;
-    }
-
-    .act-btn-wa:hover { background: rgba(37, 211, 102, 0.2); }
-
-    #close-preview {
-      position: absolute; top: 24px; right: 28px;
-      width: 40px; height: 40px;
-      display: flex; align-items: center; justify-content: center;
-      border: 1px solid var(--border);
-      border-radius: 50%; background: transparent;
-      color: var(--text-muted); font-size: 18px;
-      cursor: pointer; transition: all 0.3s;
-    }
-
-    #close-preview:hover {
-      border-color: var(--gold-main);
-      color: var(--gold-light);
-      transform: rotate(90deg);
-    }
-
-    /* ───────────────────────────────────────────
-       FOOTER TAGLINE
-    ─────────────────────────────────────────── */
-    #footer-tag {
-      position: fixed; bottom: 14px; left: 50%;
-      transform: translateX(-50%);
-      z-index: 40;
-      font-family: var(--font-body);
-      font-size: 8px; letter-spacing: 0.5em;
-      text-transform: uppercase;
-      color: rgba(201,168,76,0.25);
-      white-space: nowrap;
-    }
-
-    /* ───────────────────────────────────────────
-       ANIMATIONS
-    ─────────────────────────────────────────── */
-    @keyframes fadeDown {
-      from { opacity: 0; transform: translate(-50%, -16px); }
-      to   { opacity: 1; transform: translate(-50%, 0); }
-    }
-
-    @keyframes fadeRight {
-      from { opacity: 0; transform: translate(-20px, -50%); }
-      to   { opacity: 1; transform: translate(0, -50%); }
-    }
-
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to   { opacity: 1; }
-    }
-
-    /* ───────────────────────────────────────────
-       SHIMMER LOADING CARDS
-    ─────────────────────────────────────────── */
-    .jewel-card.skeleton {
       background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
       background-size: 200% 100%;
       animation: shimmer 1.5s infinite;
     }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
-    @keyframes shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
+    /* SHUTTER */
+    #shutter {
+      position: fixed; bottom: 38px; right: 28px; z-index: 50;
+      width: 64px; height: 64px; border-radius: 50%;
+      background: conic-gradient(var(--gold-shine), var(--gold-main), var(--gold-dark), var(--gold-main), var(--gold-shine));
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 0 40px rgba(201,168,76,0.35), 0 8px 24px rgba(0,0,0,0.5);
+      animation: fadeUp 1.6s cubic-bezier(0.16,1,0.3,1) both;
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.3s;
+    }
+    #shutter:hover { transform: scale(1.1); box-shadow: 0 0 60px rgba(201,168,76,0.55), 0 8px 32px rgba(0,0,0,0.6); }
+    #shutter:active { transform: scale(0.94); }
+    #shutter-inner {
+      width: 50px; height: 50px; border-radius: 50%;
+      background: var(--obsidian); border: 1.5px solid rgba(201,168,76,0.3);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #shutter svg { width: 22px; height: 22px; }
+
+    /* FLASH */
+    #flash { position: fixed; inset: 0; z-index: 900; background: #fff; opacity: 0; pointer-events: none; transition: opacity 0.08s; }
+
+    /* PREVIEW MODAL */
+    #preview-modal {
+      display: none; position: fixed; inset: 0; z-index: 800;
+      background: rgba(4,4,4,0.96); backdrop-filter: blur(40px);
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 32px; animation: fadeIn 0.4s ease both;
+    }
+    #preview-modal.open { display: flex; }
+    #preview-frame {
+      position: relative; border: 1px solid var(--border); border-radius: 20px;
+      overflow: hidden; max-width: 90vw; max-height: 62vh;
+      box-shadow: 0 40px 80px rgba(0,0,0,0.8), 0 0 0 1px var(--gold-dark);
+    }
+    #preview-frame::before, #preview-frame::after {
+      content: ''; position: absolute; width: 22px; height: 22px; border-color: var(--gold-light); border-style: solid; z-index: 2;
+    }
+    #preview-frame::before { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
+    #preview-frame::after  { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
+    #preview-image { display: block; max-width: 100%; max-height: 62vh; }
+    #preview-label { margin-top: 10px; font-family: var(--font-display); font-size: 11px; letter-spacing: 0.4em; color: var(--text-muted); text-transform: uppercase; }
+    #preview-actions { margin-top: 22px; display: flex; gap: 14px; }
+    .act-btn {
+      padding: 13px 28px; border-radius: var(--radius-pill);
+      font-family: var(--font-body); font-size: 10px; font-weight: 300;
+      letter-spacing: 0.3em; text-transform: uppercase; border: none; cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .act-btn:hover { transform: translateY(-2px); }
+    .act-btn-gold { background: linear-gradient(135deg, var(--gold-light), var(--gold-main)); color: var(--obsidian); }
+    .act-btn-wa { background: rgba(37,211,102,0.12); border: 1px solid rgba(37,211,102,0.4); color: #5bf08a; }
+    .act-btn-wa:hover { background: rgba(37,211,102,0.2); }
+    #close-preview {
+      position: absolute; top: 24px; right: 28px; width: 40px; height: 40px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--text-muted); font-size: 18px; cursor: pointer; transition: all 0.3s;
+    }
+    #close-preview:hover { border-color: var(--gold-main); color: var(--gold-light); transform: rotate(90deg); }
+
+    /* TOAST (core.js) */
+    #toast-notification {
+      visibility: hidden; opacity: 0;
+      position: fixed; bottom: 150px; left: 50%; transform: translateX(-50%);
+      background: rgba(15,15,15,0.88); border: 1px solid var(--border);
+      color: var(--text-primary); font-size: 11px; letter-spacing: 0.12em;
+      padding: 10px 22px; border-radius: var(--radius-pill); backdrop-filter: blur(18px);
+      white-space: nowrap; z-index: 500; transition: opacity 0.3s;
+    }
+    #toast-notification.show { visibility: visible; opacity: 1; }
+
+    /* FOOTER */
+    #footer-tag {
+      position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+      z-index: 40; font-size: 8px; letter-spacing: 0.5em; text-transform: uppercase;
+      color: rgba(201,168,76,0.22); white-space: nowrap;
     }
 
-    /* Responsive tweaks */
+    /* ANIMATIONS */
+    @keyframes fadeDown  { from{opacity:0;transform:translate(-50%,-16px)} to{opacity:1;transform:translate(-50%,0)} }
+    @keyframes fadeRight { from{opacity:0;transform:translate(-20px,-50%)} to{opacity:1;transform:translate(0,-50%)} }
+    @keyframes fadeUp    { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes fadeIn    { from{opacity:0} to{opacity:1} }
+
     @media (max-width: 600px) {
-      #carousel-wrap { padding: 0 16px 28px; }
-      .jewel-card { width: 68px; height: 68px; }
-      #shutter { width: 56px; height: 56px; bottom: 32px; right: 20px; }
+      #jewelry-options { padding: 14px 16px 26px; }
+      .thumb-btn { width: 64px !important; height: 64px !important; }
+      #shutter { width: 56px; height: 56px; bottom: 30px; right: 16px; }
       #shutter-inner { width: 44px; height: 44px; }
+      #category-rail { left: 10px; }
     }
   </style>
 </head>
 <body>
 
-  <!-- ── GRAIN ── handled by body::before -->
-
-  <!-- ── FLASH ── -->
   <div id="flash"></div>
 
-  <!-- ── VIDEO STAGE ── -->
+  <!-- core.js reads #loading-status and hides it after init -->
+  <div id="loading-status">
+    <div class="ld-brand">Jewels · AI</div>
+    <div class="ld-sub">Initialising Couture Engine</div>
+    <div class="ld-bar"><div class="ld-fill"></div></div>
+  </div>
+
   <div id="stage">
     <video id="webcam" autoplay playsinline muted></video>
     <canvas id="overlay"></canvas>
     <video id="remote-video" autoplay playsinline></video>
   </div>
 
-  <!-- ── WORDMARK ── -->
   <header id="wordmark">
     <h1>Jewels · AI</h1>
     <p>Haute Couture Virtual Try-On</p>
   </header>
 
-  <!-- ── STATUS ── -->
   <div id="status-pill">
     <div id="status-dot"></div>
-    <span id="status-text">System Ready</span>
+    <span id="status-text">AR Ready</span>
   </div>
 
-  <!-- ── CATEGORY RAIL ── -->
   <nav id="category-rail">
-    <div class="cat-btn active" data-type="earrings" onclick="selectCategory(this)"><span>Earrings</span></div>
-    <div class="cat-btn" data-type="chains"   onclick="selectCategory(this)"><span>Chains</span></div>
-    <div class="cat-btn" data-type="rings"    onclick="selectCategory(this)"><span>Rings</span></div>
-    <div class="cat-btn" data-type="bangles"  onclick="selectCategory(this)"><span>Bangles</span></div>
+    <div class="cat-btn active" data-type="earrings" onclick="handleCat(this)"><span>Earrings</span></div>
+    <div class="cat-btn"        data-type="chains"   onclick="handleCat(this)"><span>Chains</span></div>
+    <div class="cat-btn"        data-type="rings"    onclick="handleCat(this)"><span>Rings</span></div>
+    <div class="cat-btn"        data-type="bangles"  onclick="handleCat(this)"><span>Bangles</span></div>
   </nav>
 
-  <!-- ── CAROUSEL ── -->
-  <div id="carousel-wrap">
-    <div id="carousel-tray">
-      <!-- Skeleton placeholders rendered via JS -->
-    </div>
-  </div>
+  <!--
+    CRITICAL: core.js does:
+      document.getElementById('jewelry-options').innerHTML = ''
+      container.appendChild(imgElement)   ← .thumb-btn images go here
+    So this div must be exactly id="jewelry-options" with nothing else required.
+  -->
+  <div id="jewelry-options"></div>
 
-  <!-- ── SHUTTER ── -->
+  <div id="toast-notification"></div>
+
   <div id="shutter" onclick="processSnapshot()" title="Capture Look">
     <div id="shutter-inner">
-      <div id="shutter-icon"></div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--gold-main)"
+           stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
     </div>
   </div>
 
-  <!-- ── FOOTER ── -->
   <div id="footer-tag">Powered by Jewels AI &nbsp;·&nbsp; Couture Intelligence</div>
 
-  <!-- ── PREVIEW MODAL ── -->
   <div id="preview-modal">
     <button id="close-preview" onclick="closePreview()">✕</button>
     <div id="preview-frame">
@@ -539,64 +336,23 @@
     </div>
     <p id="preview-label">Your Signature Look</p>
     <div id="preview-actions">
-      <button class="act-btn act-btn-gold" onclick="downloadBakedImage()">↓ &nbsp;Download</button>
+      <button class="act-btn act-btn-gold" onclick="downloadBakedImage()">↓ &nbsp; Download</button>
       <button class="act-btn act-btn-wa"   onclick="shareToWhatsApp()">WhatsApp Share</button>
     </div>
   </div>
 
-  <!-- ── CORE AR LOGIC (unchanged) ── -->
   <script src="core.js"></script>
 
   <script>
-    /* ─── UI STATE ───────────────────────────── */
-    let currentCategory = 'earrings';
-
-    /* ─── CATEGORY SWITCH ────────────────────── */
-    function selectCategory(el) {
+    /* Bridge: our styled cat-btn → core.js selectJewelryType() */
+    function handleCat(el) {
       document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
       el.classList.add('active');
-      currentCategory = el.dataset.type;
-      // hook into existing core.js switcher if present
       if (typeof selectJewelryType === 'function') {
-        selectJewelryType(currentCategory, el);
-      }
-      renderSkeletons();
-    }
-
-    /* ─── SKELETON PLACEHOLDERS ──────────────── */
-    function renderSkeletons(count = 6) {
-      const tray = document.getElementById('carousel-tray');
-      tray.innerHTML = '';
-      for (let i = 0; i < count; i++) {
-        const card = document.createElement('div');
-        card.className = 'jewel-card skeleton';
-        tray.appendChild(card);
+        selectJewelryType(el.dataset.type, el);
       }
     }
 
-    /* Expose for core.js to call when real thumbs are ready */
-    window.populateCarousel = function(items) {
-      const tray = document.getElementById('carousel-tray');
-      tray.innerHTML = '';
-      items.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'jewel-card';
-        const img = document.createElement('img');
-        img.src = item.src; img.alt = item.label || '';
-        card.appendChild(img);
-        card.onclick = () => {
-          document.querySelectorAll('.jewel-card').forEach(c => c.classList.remove('selected'));
-          card.classList.add('selected');
-          if (typeof selectJewelry === 'function') selectJewelry(item.src);
-          window.currentJewelry = item.src;
-        };
-        tray.appendChild(card);
-      });
-    };
-
-    renderSkeletons();
-
-    /* ─── SNAPSHOT ───────────────────────────── */
     function processSnapshot() {
       const flash = document.getElementById('flash');
       flash.style.opacity = '1';
@@ -610,60 +366,48 @@
       cvs.width  = video.videoWidth  || 1280;
       cvs.height = video.videoHeight || 720;
 
-      // Mirrored user
       ctx.save();
-      ctx.translate(cvs.width, 0);
-      ctx.scale(-1, 1);
+      ctx.translate(cvs.width, 0); ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, cvs.width, cvs.height);
       ctx.restore();
-
-      // AR layer
       ctx.drawImage(overlay, 0, 0, cvs.width, cvs.height);
 
-      // Premium branding band
-      const bandH = 110;
+      const bandH = 115;
       const y0    = cvs.height - bandH;
-      const grad  = ctx.createLinearGradient(0, y0, cvs.width, cvs.height);
-      grad.addColorStop(0, 'rgba(8,8,8,0.92)');
-      grad.addColorStop(1, 'rgba(18,14,6,0.97)');
+      const grad  = ctx.createLinearGradient(0, y0, 0, cvs.height);
+      grad.addColorStop(0,   'rgba(8,8,8,0)');
+      grad.addColorStop(0.2, 'rgba(8,8,8,0.9)');
+      grad.addColorStop(1,   'rgba(18,14,6,0.97)');
       ctx.fillStyle = grad;
       ctx.fillRect(0, y0, cvs.width, bandH);
 
-      // Gold border line
-      ctx.strokeStyle = '#C9A84C';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(0, y0 + 1);
-      ctx.lineTo(cvs.width, y0 + 1);
-      ctx.stroke();
+      ctx.strokeStyle = 'rgba(201,168,76,0.65)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, y0+1); ctx.lineTo(cvs.width, y0+1); ctx.stroke();
 
-      // Wordmark
-      ctx.fillStyle = '#C9A84C';
-      ctx.font = '300 26px Georgia, serif';
-      ctx.letterSpacing = '8px';
-      ctx.fillText('JEWELS · AI', 36, y0 + 42);
+      const px = cvs.width * 0.04;
+      ctx.font = '300 22px "Cormorant Garamond",serif';
+      ctx.fillStyle = 'rgba(240,208,128,0.9)';
+      ctx.fillText('JEWELS · AI', px, y0 + 38);
 
-      ctx.fillStyle = 'rgba(245,237,214,0.5)';
-      ctx.font = '200 11px Arial, sans-serif';
-      ctx.letterSpacing = '3px';
-      ctx.fillText('HAUTE COUTURE VIRTUAL TRY-ON', 37, y0 + 64);
+      ctx.font = '200 10px "Montserrat",sans-serif';
+      ctx.fillStyle = 'rgba(245,237,214,0.4)';
+      ctx.fillText('HAUTE COUTURE VIRTUAL TRY-ON', px, y0 + 60);
 
-      // Item name
-      const fileName = window.currentJewelry
+      const raw = window.currentJewelry
         ? window.currentJewelry.split('/').pop().split('.')[0].replace(/_/g,' ')
-        : 'Curated Selection';
+        : (window.JewelsState?.currentType || 'Curated Selection');
+      ctx.font = '300 16px "Cormorant Garamond",serif';
       ctx.fillStyle = 'rgba(245,237,214,0.75)';
-      ctx.font = '300 14px Arial, sans-serif';
-      ctx.letterSpacing = '1px';
-      ctx.fillText('Item: ' + fileName, 36, y0 + 90);
+      ctx.fillText(raw.toUpperCase(), px, y0 + 90);
+
+      ctx.strokeStyle = 'rgba(201,168,76,0.22)';
+      ctx.beginPath(); ctx.moveTo(0, cvs.height-2); ctx.lineTo(cvs.width, cvs.height-2); ctx.stroke();
 
       document.getElementById('preview-image').src = cvs.toDataURL('image/png');
       document.getElementById('preview-modal').classList.add('open');
     }
 
-    function closePreview() {
-      document.getElementById('preview-modal').classList.remove('open');
-    }
+    function closePreview() { document.getElementById('preview-modal').classList.remove('open'); }
 
     function downloadBakedImage() {
       const a = document.createElement('a');
@@ -674,14 +418,12 @@
 
     async function shareToWhatsApp() {
       const dataUrl = document.getElementById('preview-image').src;
-      const blob    = await (await fetch(dataUrl)).blob();
-      const file    = new File([blob], 'my_look.png', { type: 'image/png' });
-
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Jewels AI', text: 'My curated look ✨' });
-      } else {
-        window.open(`https://wa.me/919743600311?text=${encodeURIComponent('Check out my Jewels AI look! ✨')}`, '_blank');
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], 'my_look.png', { type: 'image/png' });
+      if (navigator.canShare?.({ files: [file] })) {
+        try { await navigator.share({ files:[file], title:'Jewels AI', text:'My curated look ✨' }); return; } catch(e) {}
       }
+      window.open(`https://wa.me/919743600311?text=${encodeURIComponent('Check out my Jewels AI look! ✨')}`, '_blank');
     }
   </script>
 </body>
