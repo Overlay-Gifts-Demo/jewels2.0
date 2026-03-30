@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
+<meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>JEWELS·AI — AR Try-On</title>
 
-<title>JEWELS-AI | AR Capture</title>
-
-<link rel="stylesheet" href="style.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
 
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
@@ -16,263 +17,612 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 
 <style>
-body{
-margin:0;
-background:black;
-overflow:hidden;
-font-family:Arial;
+/* ══════════════════════════════════════
+   TOKENS
+══════════════════════════════════════ */
+:root{
+  --gold:        #c8a97e;
+  --gold-bright: #e8cc96;
+  --gold-deep:   #7a5c2e;
+  --onyx:        #080808;
+  --panel:       rgba(8,8,8,0.88);
+  --glass:       rgba(200,169,126,0.07);
+  --glass-bd:    rgba(200,169,126,0.18);
+  --text:        #f0ebe3;
+  --text-dim:    rgba(240,235,227,0.4);
+  --r:           12px;
+  --fd: 'Cormorant Garamond',serif;
+  --fb: 'Jost',sans-serif;
+  --nav-w: 120px;
+  --strip-h: 106px;
 }
 
+*,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+
+html,body{
+  height:100%; overflow:hidden;
+  background:var(--onyx);
+  color:var(--text);
+  font-family:var(--fb);
+}
+
+/* grain */
+body::after{
+  content:'';
+  position:fixed; inset:0; pointer-events:none; z-index:2;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23g)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity:.6;
+}
+
+/* ══════════════════════════════════════
+   CAMERA
+══════════════════════════════════════ */
 #video-container{
-position:fixed;
-inset:0;
+  position:fixed; inset:0; z-index:0;
+  background:#030303;
 }
-
 #webcam,#overlay,#remote-video{
-position:absolute;
-width:100%;
-height:100%;
-object-fit:cover;
+  position:absolute; width:100%; height:100%; object-fit:cover;
 }
+#webcam{ transform:scaleX(-1); }
 
-#webcam{
-transform:scaleX(-1);
+/* ══════════════════════════════════════
+   TOP BAR
+══════════════════════════════════════ */
+#topbar{
+  position:fixed; top:0; left:0; right:0; height:56px;
+  background:linear-gradient(to bottom,rgba(0,0,0,0.85) 0%,transparent 100%);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 20px; z-index:30;
+  animation:slideDown .7s cubic-bezier(.16,1,.3,1) both;
 }
+@keyframes slideDown{ from{opacity:0;transform:translateY(-16px)} to{opacity:1;transform:translateY(0)} }
 
+.brand{
+  font-family:var(--fd);
+  font-size:22px; font-weight:300; letter-spacing:.18em;
+  color:var(--gold-bright);
+  text-transform:uppercase;
+}
+.brand em{ font-style:italic; font-weight:600; color:var(--gold); }
+
+.ar-pill{
+  font-family:var(--fb);
+  font-size:9px; font-weight:400; letter-spacing:.25em; text-transform:uppercase;
+  color:var(--gold);
+  border:1px solid var(--glass-bd);
+  background:var(--glass);
+  padding:5px 12px; border-radius:20px;
+  backdrop-filter:blur(10px);
+  display:flex; align-items:center; gap:6px;
+}
+.ar-dot{
+  width:5px; height:5px; border-radius:50%;
+  background:var(--gold-bright);
+  animation:blink 2s ease-in-out infinite;
+}
+@keyframes blink{ 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ══════════════════════════════════════
+   SIDE NAV
+══════════════════════════════════════ */
 #side-nav{
-position:absolute;
-top:20px;
-left:20px;
-width:110px;
-background:rgba(0,0,0,0.7);
-padding:10px;
-border-radius:10px;
-z-index:20;
+  position:fixed;
+  top:50%; left:14px;
+  transform:translateY(-50%);
+  width:var(--nav-w);
+  z-index:25;
+  display:flex; flex-direction:column; gap:6px;
+  animation:slideLeft .7s cubic-bezier(.16,1,.3,1) .1s both;
+}
+@keyframes slideLeft{ from{opacity:0;transform:translateY(-50%) translateX(-20px)} to{opacity:1;transform:translateY(-50%) translateX(0)} }
+
+/* category label above */
+.nav-label{
+  font-family:var(--fb);
+  font-size:8px; font-weight:400; letter-spacing:.28em; text-transform:uppercase;
+  color:var(--text-dim); text-align:center;
+  margin-bottom:4px;
 }
 
 .cat{
-background:#222;
-color:white;
-padding:10px;
-margin:5px 0;
-text-align:center;
-border-radius:6px;
-cursor:pointer;
+  font-family:var(--fb);
+  font-size:10px; font-weight:400; letter-spacing:.15em; text-transform:uppercase;
+  color:var(--text-dim);
+  background:var(--panel);
+  border:1px solid rgba(255,255,255,0.06);
+  padding:11px 8px;
+  border-radius:var(--r);
+  cursor:pointer; text-align:center;
+  backdrop-filter:blur(18px);
+  transition:all .3s ease;
+  position:relative; overflow:hidden;
 }
-
+.cat::before{
+  content:'';
+  position:absolute; inset:0;
+  background:linear-gradient(135deg,var(--gold),var(--gold-deep));
+  opacity:0; transition:opacity .3s;
+}
+.cat span{ position:relative; z-index:1; }
+.cat:hover{ color:var(--text); border-color:var(--glass-bd); }
 .cat.active{
-background:#d4af37;
-color:black;
+  color:#0a0a0a;
+  border-color:var(--gold-deep);
+  box-shadow:0 0 18px rgba(200,169,126,0.25);
+}
+.cat.active::before{ opacity:1; }
+
+/* divider */
+.nav-divider{
+  height:1px;
+  background:linear-gradient(90deg,transparent,var(--glass-bd),transparent);
+  margin:4px 0;
 }
 
+/* capture button */
+#capture-btn{
+  position:relative; overflow:hidden;
+  width:100%; padding:13px 0;
+  border:none; border-radius:var(--r);
+  background:linear-gradient(145deg,var(--gold-bright),var(--gold),var(--gold-deep));
+  cursor:pointer;
+  box-shadow:0 4px 22px rgba(200,169,126,0.35), 0 1px 0 rgba(255,255,255,0.15) inset;
+  transition:transform .2s, box-shadow .2s;
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+}
+#capture-btn:hover{
+  transform:translateY(-2px);
+  box-shadow:0 8px 30px rgba(200,169,126,0.5);
+}
+#capture-btn:active{ transform:scale(.96); }
+#capture-btn::after{
+  content:'';
+  position:absolute; top:-50%; left:-60%; width:50%; height:200%;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,0.25),transparent);
+  transform:skewX(-20deg);
+  transition:left .5s ease;
+}
+#capture-btn:hover::after{ left:130%; }
+.cap-icon{
+  font-size:18px; line-height:1;
+}
+.cap-label{
+  font-family:var(--fb);
+  font-size:8px; font-weight:500; letter-spacing:.22em; text-transform:uppercase;
+  color:#0a0a0a;
+}
+
+/* ══════════════════════════════════════
+   BOTTOM STRIP
+══════════════════════════════════════ */
 #jewelry-options{
-position:fixed;
-bottom:0;
-left:0;
-right:0;
-height:110px;
-background:rgba(0,0,0,0.8);
-display:flex;
-overflow-x:auto;
-padding:20px;
-z-index:15;
+  position:fixed;
+  bottom:0; left:0; right:0;
+  height:var(--strip-h);
+  display:flex; overflow-x:auto; gap:8px;
+  padding:12px 16px;
+  background:linear-gradient(to top,rgba(0,0,0,0.9) 60%,transparent);
+  z-index:20;
+  scrollbar-width:none;
+  align-items:center;
+}
+#jewelry-options::-webkit-scrollbar{ display:none; }
+
+/* thumb items rendered by core.js — style them via global class */
+.thumb-btn{
+  flex-shrink:0;
+  width:72px; height:72px;
+  border-radius:10px;
+  object-fit:cover;
+  border:2px solid rgba(255,255,255,0.12);
+  cursor:pointer;
+  transition:border-color .25s, transform .25s, box-shadow .25s;
+}
+.thumb-btn:hover{
+  border-color:var(--gold);
+  transform:scale(1.06);
+  box-shadow:0 4px 18px rgba(200,169,126,0.3);
 }
 
+/* skeleton shimmer (from core.js) */
+@keyframes shimmer{
+  0%  { background-position:200% 0 }
+  100%{ background-position:-200% 0 }
+}
+
+/* ══════════════════════════════════════
+   FLASH
+══════════════════════════════════════ */
+#flash-overlay{
+  position:fixed; inset:0;
+  background:white; opacity:0;
+  pointer-events:none; z-index:999;
+  transition:opacity .1s;
+}
+
+/* ══════════════════════════════════════
+   PREVIEW MODAL
+══════════════════════════════════════ */
 #preview-modal{
-display:none;
-position:fixed;
-inset:0;
-background:rgba(0,0,0,0.98);
-z-index:1000;
-flex-direction:column;
-align-items:center;
-justify-content:center;
+  display:none;
+  position:fixed; inset:0;
+  background:rgba(0,0,0,0.94);
+  backdrop-filter:blur(22px);
+  z-index:1000;
+  flex-direction:column;
+  align-items:center; justify-content:center;
+  padding:24px 20px;
+  animation:fadeScale .4s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes fadeScale{ from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
+
+/* close */
+#modal-close{
+  position:absolute; top:18px; right:18px;
+  width:38px; height:38px; border-radius:50%;
+  background:var(--glass); border:1px solid var(--glass-bd);
+  color:var(--text); font-size:16px; line-height:38px; text-align:center;
+  cursor:pointer; backdrop-filter:blur(12px);
+  transition:background .2s;
+}
+#modal-close:hover{ background:rgba(200,169,126,0.15); }
+
+/* eyebrow */
+.modal-eyebrow{
+  font-family:var(--fb);
+  font-size:9px; font-weight:400; letter-spacing:.35em; text-transform:uppercase;
+  color:var(--gold); margin-bottom:16px;
 }
 
-.preview-container{
-width:85%;
-max-width:420px;
-border:3px solid #d4af37;
-border-radius:14px;
-overflow:hidden;
-background:black;
-position:relative;
+/* image frame */
+.img-frame{
+  position:relative;
+  border:1px solid var(--glass-bd);
+  border-radius:14px; overflow:hidden;
+  box-shadow:0 30px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(200,169,126,0.08);
+  max-width:92vw;
 }
+/* corner brackets */
+.img-frame::before,.img-frame::after,
+.img-frame .ic::before,.img-frame .ic::after{
+  content:''; position:absolute; width:16px; height:16px;
+  border-color:var(--gold); border-style:solid; z-index:2; pointer-events:none;
+}
+.img-frame::before{ top:0;left:0; border-width:2px 0 0 2px; border-radius:2px 0 0 0; }
+.img-frame::after { top:0;right:0;border-width:2px 2px 0 0; border-radius:0 2px 0 0; }
+.img-frame .ic::before{ bottom:0;left:0; border-width:0 0 2px 2px; border-radius:0 0 0 2px; }
+.img-frame .ic::after { bottom:0;right:0;border-width:0 2px 2px 0; border-radius:0 0 2px 0; }
 
 #preview-image{
-width:100%;
-display:block;
+  display:block;
+  max-width:88vw; max-height:52vh;
+  border-radius:14px;
 }
 
-.close-preview{
-position:absolute;
-top:-60px;
-right:0;
-color:white;
-font-size:40px;
-cursor:pointer;
+/* product chip */
+.prod-chip{
+  display:flex; align-items:center; gap:8px;
+  margin-top:18px;
+  background:var(--glass); border:1px solid var(--glass-bd);
+  border-radius:30px; padding:7px 16px;
+  backdrop-filter:blur(12px);
+}
+.chip-pulse{
+  width:6px; height:6px; border-radius:50%;
+  background:var(--gold-bright);
+  animation:blink 2s ease-in-out infinite;
+}
+.chip-txt{
+  font-family:var(--fb);
+  font-size:9px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--text-dim);
+}
+.chip-code{
+  font-family:var(--fd);
+  font-size:15px; color:var(--gold-bright);
 }
 
+/* divider */
+.modal-rule{
+  width:100%; max-width:380px;
+  height:1px; margin:18px 0;
+  background:linear-gradient(90deg,transparent,var(--glass-bd),transparent);
+}
+
+/* action buttons */
 .preview-buttons{
-position:fixed;
-bottom:20px;
-left:0;
-width:100%;
-display:flex;
-gap:15px;
-padding:0 20px;
-box-sizing:border-box;
+  width:100%; max-width:380px;
+  display:grid; grid-template-columns:1fr 1fr; gap:10px;
 }
 
-.preview-btn{
-flex:1;
-padding:18px;
-font-size:18px;
-border:none;
-border-radius:12px;
-font-weight:bold;
-cursor:pointer;
+.pv-btn{
+  position:relative; overflow:hidden;
+  padding:15px 10px; border:none; border-radius:var(--r);
+  font-family:var(--fb);
+  font-size:9px; font-weight:500; letter-spacing:.22em; text-transform:uppercase;
+  cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  transition:transform .2s, box-shadow .2s;
+}
+.pv-btn:hover{ transform:translateY(-2px); }
+.pv-btn:active{ transform:scale(.97); }
+.pv-btn::after{
+  content:'';
+  position:absolute; top:-50%; left:-60%; width:50%; height:200%;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,0.2),transparent);
+  transform:skewX(-20deg); transition:left .5s;
+}
+.pv-btn:hover::after{ left:130%; }
+.btn-ico{ font-size:16px; }
+
+.dl-btn{
+  background:linear-gradient(135deg,var(--gold-bright),var(--gold),var(--gold-deep));
+  color:#080808;
+  box-shadow:0 4px 20px rgba(200,169,126,0.3);
+}
+.wa-btn{
+  background:linear-gradient(135deg,#4cd87a,#25D366,#1a9e4e);
+  color:#fff;
+  box-shadow:0 4px 20px rgba(37,211,102,0.22);
 }
 
-.dl-btn{ background:#d4af37; color:black; }
-.wa-btn{ background:#25D366; color:white; }
-
-#flash-overlay{
-position:fixed;
-inset:0;
-background:white;
-opacity:0;
-z-index:999;
-pointer-events:none;
+/* ══════════════════════════════════════
+   TOAST (used by core.js)
+══════════════════════════════════════ */
+#toast-notification{
+  visibility:hidden;
+  position:fixed; bottom:130px; left:50%; transform:translateX(-50%);
+  background:var(--panel); border:1px solid var(--glass-bd);
+  color:var(--text); font-family:var(--fb); font-size:12px; letter-spacing:.1em;
+  padding:10px 22px; border-radius:30px; backdrop-filter:blur(18px);
+  white-space:nowrap; z-index:500;
+  transition:opacity .3s;
+  opacity:0;
 }
-
-.pill-btn {
-background:#222;
-border:1px solid #444;
-color:white;
-border-radius:50px;
-padding:10px;
-margin-top:10px;
-width:100%;
-cursor:pointer;
-display:flex;
-justify-content:center;
+#toast-notification.show{
+  visibility:visible; opacity:1;
+  animation:toastIn .3s ease;
 }
+@keyframes toastIn{ from{transform:translateX(-50%) translateY(8px);opacity:0} to{transform:translateX(-50%) translateY(0);opacity:1} }
+
+/* ══════════════════════════════════════
+   LOADING STATUS (core.js)
+══════════════════════════════════════ */
+#loading-status{
+  position:fixed; inset:0; z-index:900;
+  background:var(--onyx);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:18px;
+}
+.ls-brand{
+  font-family:var(--fd);
+  font-size:36px; font-weight:300; letter-spacing:.2em;
+  color:var(--gold-bright); text-transform:uppercase;
+}
+.ls-brand em{ font-style:italic; color:var(--gold); font-weight:600; }
+.ls-sub{
+  font-family:var(--fb);
+  font-size:9px; letter-spacing:.35em; text-transform:uppercase;
+  color:var(--text-dim);
+}
+.ls-bar{
+  width:160px; height:1px;
+  background:rgba(200,169,126,0.15);
+  border-radius:1px; overflow:hidden;
+}
+.ls-fill{
+  height:100%;
+  background:linear-gradient(90deg,var(--gold-deep),var(--gold-bright));
+  animation:lsFill 1.5s ease-in-out infinite alternate;
+}
+@keyframes lsFill{ from{width:10%} to{width:90%} }
+
 </style>
 </head>
-
 <body>
 
-<div id="app">
-
+<!-- Flash -->
 <div id="flash-overlay"></div>
 
+<!-- Loading screen -->
+<div id="loading-status">
+  <div class="ls-brand">Jewels<em>·AI</em></div>
+  <div class="ls-sub">Initialising AR Engine</div>
+  <div class="ls-bar"><div class="ls-fill"></div></div>
+</div>
+
+<!-- Camera -->
 <div id="video-container">
-<video id="webcam" autoplay playsinline muted></video>
-<canvas id="overlay"></canvas>
-<video id="remote-video" autoplay playsinline></video>
-
-<div id="side-nav">
-<div class="cat active" onclick="selectJewelryType('earrings',this)">Earrings</div>
-<div class="cat" onclick="selectJewelryType('chains',this)">Chains</div>
-<div class="cat" onclick="selectJewelryType('rings',this)">Rings</div>
-<div class="cat" onclick="selectJewelryType('bangles',this)">Bangles</div>
-
-<button class="pill-btn" onclick="processCapture()">
-📸
-</button>
-
-</div>
+  <video id="webcam" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+  <video id="remote-video" autoplay playsinline></video>
 </div>
 
+<!-- Top bar -->
+<header id="topbar">
+  <div class="brand">Jewels<em>·AI</em></div>
+  <div class="ar-pill"><div class="ar-dot"></div>AR Live</div>
+</header>
+
+<!-- Side nav -->
+<nav id="side-nav">
+  <div class="nav-label">Collection</div>
+
+  <div class="cat active" onclick="selectJewelryType('earrings',this)"><span>Earrings</span></div>
+  <div class="cat"        onclick="selectJewelryType('chains',this)"><span>Chains</span></div>
+  <div class="cat"        onclick="selectJewelryType('rings',this)"><span>Rings</span></div>
+  <div class="cat"        onclick="selectJewelryType('bangles',this)"><span>Bangles</span></div>
+
+  <div class="nav-divider"></div>
+
+  <button id="capture-btn" onclick="processCapture()">
+    <span class="cap-icon">
+      <!-- camera svg -->
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+           stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+    </span>
+    <span class="cap-label">Capture</span>
+  </button>
+</nav>
+
+<!-- Product strip -->
 <div id="jewelry-options"></div>
 
+<!-- Toast -->
+<div id="toast-notification"></div>
+
+<!-- Preview modal -->
 <div id="preview-modal">
-<div class="preview-container">
-<span class="close-preview" onclick="closePreview()">&times;</span>
-<img id="preview-image">
-</div>
+  <div id="modal-close" onclick="closePreview()">✕</div>
 
-<div class="preview-buttons">
-<button class="preview-btn dl-btn" onclick="downloadImage()">Download</button>
-<button class="preview-btn wa-btn" onclick="shareToWhatsApp()">WhatsApp Image</button>
-</div>
+  <div class="modal-eyebrow">Your Look</div>
 
-</div>
+  <div class="img-frame">
+    <div class="ic"></div>
+    <img id="preview-image" src="" alt="Captured look">
+  </div>
+
+  <div class="prod-chip">
+    <div class="chip-pulse"></div>
+    <span class="chip-txt">Product</span>
+    <span class="chip-code" id="chip-code">—</span>
+  </div>
+
+  <div class="modal-rule"></div>
+
+  <div class="preview-buttons">
+    <button class="pv-btn dl-btn" onclick="downloadImage()">
+      <span class="btn-ico">↓</span>Download
+    </button>
+    <button class="pv-btn wa-btn" onclick="shareToWhatsApp()">
+      <span class="btn-ico">↗</span>WhatsApp
+    </button>
+  </div>
 </div>
 
 <script src="core.js"></script>
 
 <script>
+/* ── helpers ── */
+function getProductName(){
+  if(window.currentJewelry)
+    return window.currentJewelry.split('/').pop().split('.')[0].toUpperCase();
+  if(window.JewelsState?.currentType)
+    return window.JewelsState.currentType.toUpperCase();
+  return 'A001';
+}
 
+/* ── capture ── */
 function processCapture(){
+  /* flash */
+  const flash = document.getElementById('flash-overlay');
+  flash.style.opacity = '1';
+  setTimeout(()=> flash.style.opacity = '0', 180);
 
-const flash=document.getElementById("flash-overlay");
-flash.style.opacity=1;
-setTimeout(()=>flash.style.opacity=0,150);
+  const video  = document.getElementById('webcam');
+  const canvas = document.getElementById('overlay');
+  const name   = getProductName();
 
-const video=document.getElementById("webcam");
-const canvas=document.getElementById("overlay");
+  /* composite */
+  const merge = document.createElement('canvas');
+  const ctx   = merge.getContext('2d');
+  merge.width  = video.videoWidth  || 1280;
+  merge.height = video.videoHeight || 720;
 
-const merge=document.createElement("canvas");
-const ctx=merge.getContext("2d");
+  ctx.save();
+  ctx.scale(-1,1);
+  ctx.drawImage(video, -merge.width, 0, merge.width, merge.height);
+  ctx.restore();
 
-merge.width=video.videoWidth||1280;
-merge.height=video.videoHeight||720;
+  ctx.drawImage(canvas, 0, 0, merge.width, merge.height);
 
-ctx.save();
-ctx.scale(-1,1);
-ctx.drawImage(video,-merge.width,0,merge.width,merge.height);
-ctx.restore();
+  /* premium caption bar */
+  const barH = 110;
+  const grd  = ctx.createLinearGradient(0, merge.height - barH, 0, merge.height);
+  grd.addColorStop(0,   'rgba(0,0,0,0)');
+  grd.addColorStop(0.2, 'rgba(0,0,0,0.85)');
+  grd.addColorStop(1,   'rgba(0,0,0,0.97)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, merge.height - barH, merge.width, barH);
 
-ctx.drawImage(canvas,0,0,merge.width,merge.height);
+  /* gold rule */
+  ctx.strokeStyle = 'rgba(200,169,126,0.7)';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, merge.height - barH + 1);
+  ctx.lineTo(merge.width, merge.height - barH + 1);
+  ctx.stroke();
 
+  const px = merge.width * 0.04;
 
-/* ===== filename only ===== */
+  /* brand */
+  ctx.font      = 'italic 300 18px "Cormorant Garamond",serif';
+  ctx.fillStyle = 'rgba(200,169,126,0.85)';
+  ctx.fillText('JEWELS·AI', px, merge.height - barH + 34);
 
-let name="";
+  /* product name */
+  ctx.font      = '400 28px "Cormorant Garamond",serif';
+  ctx.fillStyle = '#f0ebe3';
+  ctx.fillText(name, px, merge.height - barH + 74);
 
-if(window.currentJewelry){
-name=window.currentJewelry.split('/').pop().split('.')[0].toUpperCase();
+  /* bottom gold rule */
+  ctx.strokeStyle = 'rgba(200,169,126,0.25)';
+  ctx.beginPath();
+  ctx.moveTo(0, merge.height - 2);
+  ctx.lineTo(merge.width, merge.height - 2);
+  ctx.stroke();
+
+  /* show modal */
+  document.getElementById('preview-image').src = merge.toDataURL('image/png');
+  document.getElementById('chip-code').textContent = name;
+  const modal = document.getElementById('preview-modal');
+  modal.style.display = 'flex';
 }
 
-ctx.fillStyle="rgba(0,0,0,0.8)";
-ctx.fillRect(0,merge.height-90,merge.width,90);
-
-ctx.strokeStyle="#d4af37";
-ctx.lineWidth=4;
-ctx.strokeRect(0,merge.height-90,merge.width,90);
-
-ctx.fillStyle="white";
-ctx.font="bold 32px Arial";
-ctx.fillText(name,30,merge.height-35);
-
-
-/* ========================= */
-
-const url=merge.toDataURL();
-
-document.getElementById("preview-image").src=url;
-document.getElementById("preview-modal").style.display="flex";
-
-}
-
-
+/* ── modal ── */
 function closePreview(){
-document.getElementById("preview-modal").style.display="none";
+  document.getElementById('preview-modal').style.display = 'none';
 }
 
+/* ── download ── */
 function downloadImage(){
-const a=document.createElement("a");
-a.href=document.getElementById("preview-image").src;
-a.download="jewels_ai.png";
-a.click();
+  const a = document.createElement('a');
+  a.href     = document.getElementById('preview-image').src;
+  a.download = 'jewels-ai-look.png';
+  a.click();
 }
 
-function shareToWhatsApp(){
-window.open("https://wa.me/9743600311","_blank");
+/* ── whatsapp ── */
+async function shareToWhatsApp(){
+  const dataURL = document.getElementById('preview-image').src;
+  const name    = getProductName();
+  const res  = await fetch(dataURL);
+  const blob = await res.blob();
+  const file = new File([blob], 'jewels-look.png', { type:'image/png' });
+
+  if(navigator.canShare?.({ files:[file] })){
+    try{
+      await navigator.share({
+        files:[file],
+        title:'Jewels AI Look',
+        text:`Hi! Interested in product: ${name} from Jewels AI ✨`
+      });
+    } catch(e){
+      fallbackWA(name);
+    }
+  } else {
+    fallbackWA(name);
+  }
 }
 
+function fallbackWA(name){
+  const text = encodeURIComponent(`Hi! I'm interested in: ${name} from Jewels AI ✨`);
+  window.open(`https://wa.me/9743600311?text=${text}`, '_blank');
+}
 </script>
 
 </body>
