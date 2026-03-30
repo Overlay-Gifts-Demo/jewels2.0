@@ -3,232 +3,861 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>JEWELS-AI | Constellation UI Fixed</title>
-  
+  <title>JEWELS-AI | Virtual Atelier</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&family=Didact+Gothic&family=Cormorant+Garamond:ital,wght@0,300;1,300;1,400&display=swap" rel="stylesheet">
+
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
   <style>
+    /* ══════════════════════════════════════════
+       TOKENS
+    ══════════════════════════════════════════ */
     :root {
-      --star-gold: #FFD700;
-      --starlight: rgba(255, 255, 255, 0.8);
-      --void-bg: rgba(0, 0, 0, 0.4);
+      --onyx:       #09080A;
+      --obsidian:   #0E0C10;
+      --gold:       #BFA05A;
+      --gold-hi:    #E8D28E;
+      --gold-lo:    #6B5620;
+      --gold-pale:  #F5EDD4;
+      --ivory:      #F2EDE3;
+      --ivory-mid:  rgba(242,237,227,0.5);
+      --ivory-faint:rgba(242,237,227,0.18);
+      --rim:        rgba(191,160,90,0.3);
+      --rim-soft:   rgba(191,160,90,0.12);
+      --glass:      rgba(9,8,10,0.55);
+      --glass-dark: rgba(9,8,10,0.82);
+      --r: 12px;
+      --rp: 100px;
     }
 
-    body, html {
-      margin: 0; padding: 0;
-      background: #000; color: white;
-      font-family: sans-serif;
-      overflow: hidden; height: 100vh;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100dvh;
+      background: var(--onyx);
+      color: var(--ivory);
+      font-family: 'Didact Gothic', sans-serif;
+      overflow: hidden;
     }
 
-    #video-container { position: fixed; inset: 0; z-index: 0; }
-    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    /* ── GRAIN ── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 999; pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+      opacity: 0.025;
+    }
+
+    /* ── CAMERA ── */
+    #video-container {
+      position: fixed; inset: 0; z-index: 0;
+      background: #050406;
+    }
+    video, canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
     #webcam { transform: scaleX(-1); }
 
-    /* COSMIC NAVIGATION */
-    #dock {
-      position: fixed; top: 30px; left: 20px; right: 20px;
-      display: flex; justify-content: space-between;
-      z-index: 100;
+    /* Cinematic letterbox vignette */
+    #vignette {
+      position: fixed; inset: 0; z-index: 2; pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 42%, transparent 28%, rgba(0,0,0,0.5) 100%),
+        linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, transparent 18%, transparent 65%, rgba(0,0,0,0.85) 100%);
     }
 
-    .nav-group { display: flex; gap: 15px; align-items: center; }
+    /* ── TOP LETTERBOX (header zone) ── */
+    #top-bar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+      height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 22px;
+      animation: slideDown 0.7s cubic-bezier(0.22,1,0.36,1) both;
+    }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
 
-    .cat {
-      width: 55px; height: 55px;
-      background: var(--void-bg);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 215, 0, 0.2);
-      border-radius: 50%;
+    /* Wordmark */
+    .wordmark {
       display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      cursor: pointer; transition: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .wm-primary {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px; font-weight: 400;
+      letter-spacing: 0.22em;
+      color: var(--ivory);
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .wm-primary em {
+      font-style: italic;
+      color: var(--gold);
+    }
+    .wm-sub {
+      font-family: 'Didact Gothic', sans-serif;
+      font-size: 7.5px;
+      letter-spacing: 0.5em;
+      color: var(--ivory-mid);
+      text-transform: uppercase;
+      margin-top: 3px;
     }
 
-    .cat span {
-      font-size: 8px; text-transform: uppercase;
-      letter-spacing: 1px; margin-top: 4px; color: var(--starlight);
-      opacity: 0; transition: 0.3s;
+    /* Live badge */
+    .live-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--glass);
+      border: 0.5px solid var(--rim);
+      border-radius: var(--rp);
+      padding: 6px 13px;
+      backdrop-filter: blur(18px);
+      font-size: 8px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .live-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #4DFF9A;
+      box-shadow: 0 0 5px #4DFF9A;
+      animation: livePulse 2s ease-in-out infinite;
+    }
+    @keyframes livePulse { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+    /* Icon actions */
+    .top-actions { display: flex; gap: 8px; }
+    .ia {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: rgba(9,8,10,0.4);
+      border: 0.5px solid rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; backdrop-filter: blur(14px);
+      color: var(--ivory-mid);
+      transition: border-color 0.25s, color 0.25s, background 0.25s;
+    }
+    .ia:hover { border-color: var(--rim); color: var(--gold-hi); background: rgba(191,160,90,0.08); }
+
+    /* ── DECO RULES ── */
+    .deco-rule {
+      position: fixed; left: 0; right: 0; z-index: 5; pointer-events: none;
+      height: 1px;
+      background: linear-gradient(90deg,
+        transparent 0%, var(--gold-lo) 15%, var(--gold) 38%,
+        var(--gold-hi) 50%, var(--gold) 62%, var(--gold-lo) 85%, transparent 100%
+      );
+      opacity: 0.4;
+    }
+    .deco-rule.top    { top: 64px; }
+    .deco-rule.bottom { bottom: 206px; }
+
+    /* ── AR BRACKETS ── */
+    .bracket {
+      position: fixed; z-index: 6; pointer-events: none;
+      width: 32px; height: 32px;
+    }
+    .bracket svg { width: 100%; height: 100%; }
+    .bracket.tl { top: 76px;  left: 16px; }
+    .bracket.tr { top: 76px;  right: 16px;  transform: scaleX(-1); }
+    .bracket.bl { bottom: 216px; left: 16px;  transform: scaleY(-1); }
+    .bracket.br { bottom: 216px; right: 16px; transform: scale(-1,-1); }
+
+    /* ── SCAN LINE ── */
+    #scan {
+      position: fixed; left: 0; right: 0; z-index: 4; pointer-events: none;
+      height: 1px; opacity: 0;
+      background: linear-gradient(90deg, transparent, var(--gold-lo) 30%, var(--gold) 50%, var(--gold-lo) 70%, transparent);
+      animation: scanAnim 8s ease-in-out infinite 2s;
+    }
+    @keyframes scanAnim {
+      0%   { top: 15%; opacity: 0; }
+      4%   { opacity: 0.5; }
+      92%  { opacity: 0.35; }
+      100% { top: 80%; opacity: 0; }
     }
 
-    .cat.active {
-      background: #fff; transform: scale(1.1);
-      box-shadow: 0 0 30px #fff, 0 0 60px var(--star-gold);
-      border-color: #fff;
+    /* ── SYMMETRIC SIDE NAVIGATION ── */
+    /* Left nav */
+    #nav-left, #nav-right {
+      position: fixed; top: 50%; z-index: 20;
+      transform: translateY(-50%);
+      display: flex; flex-direction: column; gap: 14px;
     }
-    .cat.active .icon { filter: brightness(0); }
-    .cat.active span { opacity: 1; color: #000; font-weight: bold; }
+    #nav-left  { left: 14px; animation: slideRight 0.7s ease 0.2s both; }
+    #nav-right { right: 14px; animation: slideLeft  0.7s ease 0.2s both; }
+    @keyframes slideRight { from {opacity:0;transform:translateY(-50%) translateX(-12px)} to {opacity:1;transform:translateY(-50%) translateX(0)} }
+    @keyframes slideLeft  { from {opacity:0;transform:translateY(-50%) translateX(12px)} to {opacity:1;transform:translateY(-50%) translateX(0)} }
 
-    /* SNAPSHOT BUTTON */
-    .snap-btn {
-      width: 60px; height: 60px; background: white; border: none; border-radius: 50%;
-      cursor: pointer; font-size: 24px; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 0 20px var(--star-gold); z-index: 110;
+    .navpill {
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      width: 52px; padding: 10px 6px;
+      border-radius: var(--r);
+      background: var(--glass);
+      border: 0.5px solid var(--rim-soft);
+      backdrop-filter: blur(20px);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-decoration: none;
+    }
+    .navpill:hover { border-color: var(--rim); background: rgba(191,160,90,0.08); }
+    .navpill.active {
+      background: linear-gradient(160deg, var(--gold-lo) 0%, var(--gold) 60%, var(--gold-hi) 100%);
+      border-color: transparent;
+      box-shadow: 0 6px 24px rgba(191,160,90,0.3);
+    }
+    .navpill-icon {
+      width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--ivory-mid);
+      transition: color 0.3s;
+    }
+    .navpill.active .navpill-icon { color: var(--onyx); }
+    .navpill:not(.active):hover .navpill-icon { color: var(--gold-hi); }
+    .navpill-label {
+      font-size: 7px; letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ivory-faint);
+      transition: color 0.3s;
+    }
+    .navpill.active .navpill-label { color: rgba(9,8,10,0.65); }
+    .navpill:not(.active):hover .navpill-label { color: var(--ivory-mid); }
+
+    /* ── AR METRICS STRIP (left side below nav) ── */
+    #ar-strip {
+      position: fixed; left: 14px; bottom: 230px;
+      z-index: 18; display: flex; flex-direction: column; gap: 6px;
+      animation: slideRight 0.7s ease 0.4s both;
+    }
+    .arm {
+      background: var(--glass-dark);
+      border: 0.5px solid var(--rim-soft);
+      border-radius: 8px;
+      padding: 6px 10px;
+      backdrop-filter: blur(20px);
+      min-width: 60px;
+    }
+    .arm-l { font-size: 6.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ivory-faint); margin-bottom: 2px; }
+    .arm-v {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 14px; font-weight: 300;
+      color: var(--gold); line-height: 1;
     }
 
-    #jewelry-options {
-      position: fixed; bottom: 40px; left: 0; width: 100%;
-      height: 140px; display: flex; 
-      align-items: center; overflow-x: auto;
-      gap: 30px; padding: 0 60px;
-      z-index: 90; scrollbar-width: none;
-      background: radial-gradient(ellipse at bottom, rgba(255,215,0,0.15) 0%, transparent 70%);
+    /* ── CAPTURE ZONE (center bottom) ── */
+    #capture-zone {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      z-index: 25; width: 100%; max-width: 420px;
+      display: flex; flex-direction: column; align-items: center;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      animation: slideUp 0.8s cubic-bezier(0.22,1,0.36,1) 0.1s both;
     }
-    #jewelry-options::-webkit-scrollbar { display: none; }
-
-    #jewelry-options img, .thumb-btn {
-      min-width: 90px !important; height: 90px !important;
-      object-fit: contain; background: radial-gradient(circle, rgba(255,215,0,0.1) 0%, transparent 70%);
-      border-radius: 20px; cursor: pointer; transition: 0.5s;
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0); }
     }
 
-    /* PREVIEW MODAL */
+    /* Jewelry tray */
+    #jewel-tray {
+      width: 100%;
+      background: var(--glass-dark);
+      border: 0.5px solid var(--rim);
+      border-radius: 20px 20px 0 0;
+      backdrop-filter: blur(44px) saturate(1.5);
+      overflow: hidden;
+    }
+
+    /* Top shimmer line */
+    #jewel-tray::before {
+      content: ''; display: block; height: 1px;
+      background: linear-gradient(90deg,
+        transparent, var(--gold-lo) 22%, var(--gold) 50%, var(--gold-lo) 78%, transparent
+      );
+      opacity: 0.65;
+    }
+
+    /* Tray header */
+    #tray-header {
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding: 12px 18px 6px;
+    }
+    #tray-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 17px; font-style: italic; font-weight: 300;
+      color: var(--ivory);
+    }
+    #tray-meta {
+      font-size: 8px; letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gold-lo);
+    }
+
+    /* Scroll strip */
+    #jewel-scroll {
+      display: flex; gap: 0;
+      overflow-x: auto; scrollbar-width: none;
+      padding: 4px 14px 10px;
+      -webkit-mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+    }
+    #jewel-scroll::-webkit-scrollbar { display: none; }
+
+    .jcard {
+      flex-shrink: 0; width: 86px;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      padding: 7px 5px;
+      border-radius: 12px; cursor: pointer;
+      position: relative; transition: background 0.3s;
+    }
+    .jcard:hover { background: rgba(191,160,90,0.06); }
+    .jcard.sel   { background: rgba(191,160,90,0.1); }
+    .jcard.sel::after {
+      content: ''; position: absolute; top: 6px; right: 7px;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--gold); box-shadow: 0 0 7px var(--gold);
+    }
+
+    .jring {
+      width: 66px; height: 66px; border-radius: 50%;
+      background: radial-gradient(circle at 34% 30%, rgba(255,255,255,0.05), rgba(0,0,0,0.35));
+      border: 0.5px solid rgba(255,255,255,0.07);
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .jcard:hover .jring, .jcard.sel .jring {
+      border-color: var(--gold-lo);
+      box-shadow: 0 0 18px rgba(191,160,90,0.2);
+    }
+    .jring img {
+      width: 50px; height: 50px; object-fit: contain;
+      animation: float 3.8s ease-in-out infinite;
+    }
+    .jcard:nth-child(2) .jring img { animation-delay:-0.7s }
+    .jcard:nth-child(3) .jring img { animation-delay:-1.4s }
+    .jcard:nth-child(4) .jring img { animation-delay:-2.1s }
+    .jcard:nth-child(5) .jring img { animation-delay:-2.8s }
+    .jcard:nth-child(6) .jring img { animation-delay:-3.5s }
+    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+
+    .jlabel {
+      font-size: 8.5px; letter-spacing: 0.1em;
+      text-transform: uppercase; text-align: center;
+      color: rgba(242,237,227,0.35); line-height: 1.4;
+      transition: color 0.3s;
+    }
+    .jcard.sel .jlabel { color: var(--gold); }
+    .jprice {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 12px; font-weight: 300;
+      color: var(--gold-hi); letter-spacing: 0.02em;
+    }
+
+    /* ── CAPTURE BUTTON AREA ── */
+    #capture-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 16px 16px;
+      width: 100%;
+    }
+
+    /* Main capture/shutter */
+    #shutter {
+      flex: 1; height: 52px; border: none;
+      border-radius: var(--r);
+      background: linear-gradient(108deg, var(--gold-lo) 0%, var(--gold) 48%, var(--gold-hi) 76%, var(--gold) 100%);
+      background-size: 200% 100%; background-position: 100% 0;
+      font-family: 'Didact Gothic', sans-serif;
+      font-size: 10px; letter-spacing: 0.32em;
+      text-transform: uppercase;
+      color: var(--onyx); cursor: pointer;
+      position: relative; overflow: hidden;
+      transition: background-position 0.5s ease, transform 0.15s;
+      box-shadow: 0 4px 24px rgba(191,160,90,0.22);
+    }
+    #shutter:hover  { background-position: 0 0; }
+    #shutter:active { transform: scale(0.97); }
+    #shutter::before {
+      content: ''; position: absolute; top: -50%; left: -65%;
+      width: 45%; height: 200%;
+      background: linear-gradient(105deg, transparent, rgba(255,255,255,0.25), transparent);
+      transform: skewX(-18deg); transition: left 0.55s ease;
+    }
+    #shutter:hover::before { left: 125%; }
+
+    /* Icon buttons */
+    .cab {
+      width: 52px; height: 52px; border-radius: var(--r);
+      background: var(--glass);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0;
+      transition: background 0.25s, border-color 0.25s, transform 0.15s;
+    }
+    .cab:active { transform: scale(0.94); }
+    .cab.gold-border {
+      border: 0.5px solid var(--rim);
+      color: var(--gold);
+    }
+    .cab.soft-border {
+      border: 0.5px solid rgba(255,255,255,0.08);
+      color: var(--ivory-mid);
+    }
+    .cab.gold-border:hover { background: rgba(191,160,90,0.1); border-color: var(--gold); }
+    .cab.soft-border:hover { border-color: var(--rim-soft); color: var(--ivory); }
+
+    /* ── FLASH ── */
+    #flash {
+      position: fixed; inset: 0; z-index: 997; pointer-events: none;
+      background: #fff; opacity: 0; transition: opacity 0.08s ease;
+    }
+
+    /* ═══════════════════════════════════════
+       PREVIEW MODAL
+    ═══════════════════════════════════════ */
     #preview-modal {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98);
-      z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
+      display: none;
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(5,4,6,0.95);
+      backdrop-filter: blur(32px);
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 20px;
     }
-    .preview-box { width: 100%; max-width: 500px; text-align: center; position: relative; }
-    #preview-image { width: 100%; border-radius: 15px; border: 2px solid var(--star-gold); margin-bottom: 20px; }
-    
-    .preview-actions { display: flex; gap: 15px; width: 100%; }
-    .preview-btn { flex: 1; padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 14px; text-transform: uppercase; }
-    .dl-btn { background: var(--star-gold); color: black; }
-    .wa-btn { background: #25D366; color: white; }
-    .close-preview { position: absolute; top: -50px; right: 0; color: white; font-size: 40px; cursor: pointer; }
-    
-    #flash-overlay { position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 999; }
-    .cosmic-overlay { position: fixed; inset: 0; background: radial-gradient(circle at bottom, rgba(255,215,0,0.05) 0%, transparent 50%); pointer-events: none; z-index: 1; }
+    #preview-modal.open { display: flex; animation: modalReveal 0.45s cubic-bezier(0.22,1,0.36,1) both; }
+    @keyframes modalReveal {
+      from { opacity:0; transform: scale(0.93) translateY(14px); }
+      to   { opacity:1; transform: scale(1) translateY(0); }
+    }
+
+    #modal-close {
+      position: absolute; top: 18px; right: 18px;
+      width: 38px; height: 38px; border-radius: 50%;
+      background: rgba(191,160,90,0.06);
+      border: 0.5px solid var(--rim-soft);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--ivory-mid);
+      font-size: 16px; line-height: 1;
+      transition: background 0.2s, color 0.2s;
+    }
+    #modal-close:hover { background: rgba(191,160,90,0.15); color: var(--gold-hi); }
+
+    /* Modal eyebrow */
+    #modal-eyebrow {
+      font-family: 'Didact Gothic', sans-serif;
+      font-size: 8px; letter-spacing: 0.5em;
+      text-transform: uppercase; color: var(--gold);
+      margin-bottom: 14px;
+    }
+
+    /* Image frame */
+    #modal-frame {
+      position: relative;
+      border-radius: var(--r);
+      overflow: hidden;
+      border: 0.5px solid var(--rim);
+      box-shadow: 0 0 0 1px rgba(191,160,90,0.07), 0 30px 80px rgba(0,0,0,0.9);
+      max-width: 100%;
+    }
+    /* deco corners */
+    .mc { position: absolute; width: 18px; height: 18px; z-index: 3; pointer-events: none; }
+    .mc svg { width: 100%; height: 100%; }
+    .mc.tl { top: 0; left: 0; }
+    .mc.tr { top: 0; right: 0; transform: scaleX(-1); }
+    .mc.bl { bottom: 0; left: 0; transform: scaleY(-1); }
+    .mc.br { bottom: 0; right: 0; transform: scale(-1,-1); }
+
+    #preview-image {
+      display: block;
+      max-width: 88vw; max-height: 48vh;
+      border-radius: var(--r);
+    }
+
+    /* Product chip */
+    #prod-chip {
+      width: 100%; max-width: 380px;
+      margin: 16px 0 12px;
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(191,160,90,0.05);
+      border: 0.5px solid var(--rim-soft);
+      border-radius: var(--rp);
+      padding: 9px 18px;
+    }
+    .chip-dot {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+      background: var(--gold); box-shadow: 0 0 8px var(--gold);
+      animation: cpulse 2s ease-in-out infinite;
+    }
+    @keyframes cpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.35;transform:scale(0.7)} }
+    .chip-label { font-size: 8.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ivory-mid); flex: 1; }
+    .chip-code {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 15px; font-weight: 300; font-style: italic;
+      color: var(--gold-hi);
+    }
+
+    /* Status line */
+    #dl-status {
+      height: 14px; font-size: 8.5px; letter-spacing: 0.28em;
+      text-transform: uppercase; color: var(--gold);
+      text-align: center; margin-bottom: 10px;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #dl-status.show { opacity: 1; }
+
+    /* Action grid */
+    #modal-actions {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 10px; width: 100%; max-width: 380px;
+    }
+
+    .mab {
+      height: 50px; border: none; border-radius: var(--r);
+      font-family: 'Didact Gothic', sans-serif;
+      font-size: 9px; letter-spacing: 0.28em; text-transform: uppercase;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+      position: relative; overflow: hidden;
+      transition: transform 0.18s, box-shadow 0.18s;
+    }
+    .mab:hover { transform: translateY(-2px); }
+    .mab:active { transform: scale(0.97); }
+    .mab::after {
+      content: ''; position: absolute; top:-50%; left:-65%;
+      width: 45%; height: 200%;
+      background: linear-gradient(105deg, transparent, rgba(255,255,255,0.18), transparent);
+      transform: skewX(-18deg); transition: left 0.55s;
+    }
+    .mab:hover::after { left: 125%; }
+
+    .mab-dl {
+      background: linear-gradient(135deg, var(--gold-lo) 0%, var(--gold) 55%, var(--gold-hi) 100%);
+      color: var(--onyx);
+      box-shadow: 0 4px 22px rgba(191,160,90,0.28);
+    }
+    .mab-wa {
+      background: linear-gradient(135deg, #0A5C48 0%, #25D366 55%, #7CF0A8 100%);
+      color: #fff;
+      box-shadow: 0 4px 22px rgba(37,211,102,0.2);
+    }
+    .mab svg { width: 15px; height: 15px; flex-shrink: 0; }
   </style>
 </head>
 <body>
 
-  <div id="app">
-    <div class="cosmic-overlay"></div>
-    <div id="flash-overlay"></div>
-    
-    <div id="video-container">
-      <video id="webcam" autoplay playsinline muted></video>
-      <canvas id="overlay"></canvas>
-      <video id="remote-video" autoplay playsinline></video>
+  <div id="flash"></div>
+
+  <!-- CAMERA -->
+  <div id="video-container">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <video id="remote-video" autoplay playsinline style="display:none;"></video>
+  </div>
+  <div id="vignette"></div>
+
+  <!-- SCAN -->
+  <div id="scan"></div>
+
+  <!-- DECO RULES -->
+  <div class="deco-rule top"></div>
+  <div class="deco-rule bottom"></div>
+
+  <!-- AR BRACKETS -->
+  <div class="bracket tl"><svg viewBox="0 0 32 32" fill="none"><path d="M2 16V2H16" stroke="#BFA05A" stroke-width="0.85" stroke-linecap="round"/></svg></div>
+  <div class="bracket tr"><svg viewBox="0 0 32 32" fill="none"><path d="M2 16V2H16" stroke="#BFA05A" stroke-width="0.85" stroke-linecap="round"/></svg></div>
+  <div class="bracket bl"><svg viewBox="0 0 32 32" fill="none"><path d="M2 16V2H16" stroke="#BFA05A" stroke-width="0.85" stroke-linecap="round"/></svg></div>
+  <div class="bracket br"><svg viewBox="0 0 32 32" fill="none"><path d="M2 16V2H16" stroke="#BFA05A" stroke-width="0.85" stroke-linecap="round"/></svg></div>
+
+  <!-- TOP BAR -->
+  <div id="top-bar">
+    <div class="wordmark">
+      <div class="wm-primary">JEWELS<em>·AI</em></div>
+      <div class="wm-sub">Virtual Atelier</div>
+    </div>
+    <div class="live-pill"><div class="live-dot"></div>AR Live</div>
+    <div class="top-actions">
+      <div class="ia" title="Wishlist">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      </div>
+      <div class="ia" title="Share">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEFT NAV: Earrings + Chains -->
+  <div id="nav-left">
+    <div class="navpill active" onclick="handleCat('earrings', this)">
+      <div class="navpill-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="12" cy="7" r="4"/><path d="M12 11v8M9 16l3 3 3-3"/></svg>
+      </div>
+      <span class="navpill-label">Earrings</span>
+    </div>
+    <div class="navpill" onclick="handleCat('chains', this)">
+      <div class="navpill-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      </div>
+      <span class="navpill-label">Chains</span>
+    </div>
+  </div>
+
+  <!-- RIGHT NAV: Rings + Bangles -->
+  <div id="nav-right">
+    <div class="navpill" onclick="handleCat('rings', this)">
+      <div class="navpill-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <span class="navpill-label">Rings</span>
+    </div>
+    <div class="navpill" onclick="handleCat('bangles', this)">
+      <div class="navpill-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 9 9"/></svg>
+      </div>
+      <span class="navpill-label">Bangles</span>
+    </div>
+  </div>
+
+  <!-- AR METRICS -->
+  <div id="ar-strip">
+    <div class="arm"><div class="arm-l">Face</div><div class="arm-v">Oval</div></div>
+    <div class="arm"><div class="arm-l">Tone</div><div class="arm-v">Warm</div></div>
+    <div class="arm"><div class="arm-l">Match</div><div class="arm-v">98%</div></div>
+  </div>
+
+  <!-- CAPTURE ZONE -->
+  <div id="capture-zone">
+    <div id="jewel-tray">
+      <div id="tray-header">
+        <div id="tray-title">Diamond Collection</div>
+        <div id="tray-meta" id="tray-count">12 Pieces</div>
+      </div>
+
+      <div id="jewel-scroll">
+        <div class="jcard sel" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/50x50/0E0B06/BFA05A?text=◆&font=serif" alt="Studs"></div>
+          <div class="jlabel">Diamond<br>Studs</div>
+          <div class="jprice">₹45,000</div>
+        </div>
+        <div class="jcard" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/50x50/0E0B06/E8D28E?text=❖&font=serif" alt="Drops"></div>
+          <div class="jlabel">Gold<br>Drops</div>
+          <div class="jprice">₹62,000</div>
+        </div>
+        <div class="jcard" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/50x50/0E0B06/9A8055?text=○&font=serif" alt="Hoops"></div>
+          <div class="jlabel">Hoop<br>Set</div>
+          <div class="jprice">₹38,500</div>
+        </div>
+        <div class="jcard" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/50x50/0E0B06/BFA05A?text=✦&font=serif" alt="Chandbali"></div>
+          <div class="jlabel">Chandbali<br>Classic</div>
+          <div class="jprice">₹95,000</div>
+        </div>
+        <div class="jcard" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/50x50/0E0B06/E8D28E?text=✿&font=serif" alt="Jhumka"></div>
+          <div class="jlabel">Gold<br>Jhumka</div>
+          <div class="jprice">₹72,000</div>
+        </div>
+        <div class="jcard" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/50x50/0E0B06/9A8055?text=✶&font=serif" alt="Cluster"></div>
+          <div class="jlabel">Star<br>Cluster</div>
+          <div class="jprice">₹1,10,000</div>
+        </div>
+      </div>
+
+      <div id="capture-row">
+        <button id="shutter" onclick="captureSnapshot()">Capture Look</button>
+        <div class="cab gold-border" title="Camera Snap" onclick="captureSnapshot()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </div>
+        <div class="cab soft-border" title="Save">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PREVIEW MODAL -->
+  <div id="preview-modal">
+    <div id="modal-close" onclick="closePreview()">✕</div>
+    <div id="modal-eyebrow">Your Look · Atelier Capture</div>
+
+    <div id="modal-frame">
+      <div class="mc tl"><svg viewBox="0 0 18 18" fill="none"><path d="M1 9V1H9" stroke="#BFA05A" stroke-width="1.1" stroke-linecap="round"/></svg></div>
+      <div class="mc tr"><svg viewBox="0 0 18 18" fill="none"><path d="M1 9V1H9" stroke="#BFA05A" stroke-width="1.1" stroke-linecap="round"/></svg></div>
+      <div class="mc bl"><svg viewBox="0 0 18 18" fill="none"><path d="M1 9V1H9" stroke="#BFA05A" stroke-width="1.1" stroke-linecap="round"/></svg></div>
+      <div class="mc br"><svg viewBox="0 0 18 18" fill="none"><path d="M1 9V1H9" stroke="#BFA05A" stroke-width="1.1" stroke-linecap="round"/></svg></div>
+      <img id="preview-image" src="" alt="Your look">
     </div>
 
-    <div id="dock">
-        <div class="nav-group">
-            <div class="cat active" onclick="handleStarClick('earrings', this)">
-                <div class="icon">✨</div><span>Earrings</span>
-            </div>
-            <div class="cat" onclick="handleStarClick('chains', this)">
-                <div class="icon">💎</div><span>Chains</span>
-            </div>
-        </div>
-        
-        <button class="snap-btn" onclick="captureCosmicSnapshot()">📸</button>
-
-        <div class="nav-group">
-            <div class="cat" onclick="handleStarClick('rings', this)">
-                <div class="icon">💍</div><span>Rings</span>
-            </div>
-            <div class="cat" onclick="handleStarClick('bangles', this)">
-                <div class="icon">☄️</div><span>Bangles</span>
-            </div>
-        </div>
+    <div id="prod-chip">
+      <div class="chip-dot"></div>
+      <span class="chip-label">Product Code</span>
+      <span class="chip-code" id="chip-code">A001</span>
     </div>
 
-    <div id="jewelry-options"></div>
+    <div id="dl-status"></div>
 
-    <div id="preview-modal">
-        <div class="preview-box">
-            <span class="close-preview" onclick="closePreview()">&times;</span>
-            <img id="preview-image" src="">
-            <div class="preview-actions">
-                <button class="preview-btn dl-btn" onclick="downloadBakedImage()">📥 Download</button>
-                <button class="preview-btn wa-btn" onclick="shareToWhatsApp()">🟢 WhatsApp</button>
-            </div>
-        </div>
+    <div id="modal-actions">
+      <button class="mab mab-dl" id="dl-btn" onclick="downloadBakedImage()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </button>
+      <button class="mab mab-wa" id="wa-btn" onclick="shareToWhatsApp()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        WhatsApp
+      </button>
     </div>
   </div>
 
   <script src="core.js"></script>
 
   <script>
-    function handleStarClick(type, element) {
-        document.querySelectorAll('.cat').forEach(nav => nav.classList.remove('active'));
-        element.classList.add('active');
-        if (typeof selectJewelryType === "function") selectJewelryType(type);
+    /* ── Category switch ── */
+    const CATS = {
+      earrings: { title: 'Diamond Collection', count: '12 Pieces' },
+      chains:   { title: 'Gold Chains',        count: '8 Pieces'  },
+      rings:    { title: 'Solitaire Rings',     count: '15 Pieces' },
+      bangles:  { title: 'Bangle Sets',         count: '6 Pieces'  },
+    };
+
+    function handleCat(type, el) {
+      document.querySelectorAll('.navpill').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+      const c = CATS[type] || {};
+      document.getElementById('tray-title').textContent = c.title || '';
+      document.getElementById('tray-meta').textContent  = c.count || '';
+      if (typeof selectJewelryType === 'function') selectJewelryType(type);
     }
 
-    function captureCosmicSnapshot() {
-        const flash = document.getElementById('flash-overlay');
-        flash.style.opacity = '1';
-        setTimeout(() => flash.style.opacity = '0', 150);
-
-        const video = document.getElementById('webcam');
-        const arLayer = document.getElementById('overlay');
-        
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
-
-        // 1. Draw Mirror Camera
-        ctx.save();
-        ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        ctx.restore();
-
-        // 2. Draw Jewelry
-        ctx.drawImage(arLayer, 0, 0, canvas.width, canvas.height);
-
-        // 3. Bake Description
-        const fileName = window.currentJewelry ? window.currentJewelry.split('/').pop().split('.')[0] : "Stellar_Selection";
-        const boxH = 120;
-        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
-        ctx.fillRect(0, canvas.height - boxH, canvas.width, boxH);
-        ctx.strokeStyle = "#FFD700"; ctx.lineWidth = 4;
-        ctx.strokeRect(0, canvas.height - boxH, canvas.width, boxH);
-
-        ctx.fillStyle = "#FFD700"; ctx.font = "bold 32px Arial";
-        ctx.fillText("Product Description", 40, canvas.height - 75);
-        ctx.fillStyle = "white"; ctx.font = "26px Arial";
-        ctx.fillText("Item Code: " + fileName, 40, canvas.height - 35);
-
-        document.getElementById('preview-image').src = canvas.toDataURL("image/png");
-        document.getElementById('preview-modal').style.display = 'flex';
+    function pickJewel(card) {
+      document.querySelectorAll('.jcard').forEach(c => c.classList.remove('sel'));
+      card.classList.add('sel');
     }
 
-    function closePreview() { document.getElementById('preview-modal').style.display = 'none'; }
+    function getCode() {
+      return window.currentJewelry
+        ? window.currentJewelry.split('/').pop().split('.')[0]
+        : 'A001';
+    }
 
+    /* ── Capture ── */
+    function captureSnapshot() {
+      const flash = document.getElementById('flash');
+      flash.style.opacity = '1';
+      setTimeout(() => flash.style.opacity = '0', 150);
+
+      const video   = document.getElementById('webcam');
+      const arLayer = document.getElementById('overlay');
+      const code    = getCode();
+      document.getElementById('chip-code').textContent = code;
+
+      const c   = document.createElement('canvas');
+      c.width   = video.videoWidth  || 1280;
+      c.height  = video.videoHeight || 720;
+      const ctx = c.getContext('2d');
+
+      // Mirror draw (webcam already mirrored via CSS but canvas needs manual flip)
+      ctx.save();
+      ctx.translate(c.width, 0); ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, c.width, c.height);
+      ctx.restore();
+      ctx.drawImage(arLayer, 0, 0, c.width, c.height);
+
+      // Branded info bar
+      const bh  = 144;
+      const grd = ctx.createLinearGradient(0, c.height - bh, 0, c.height);
+      grd.addColorStop(0,    'rgba(0,0,0,0)');
+      grd.addColorStop(0.1,  'rgba(5,4,6,0.9)');
+      grd.addColorStop(1,    'rgba(5,4,6,0.97)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, c.height - bh, c.width, bh);
+
+      // Gold rule
+      const gy = c.height - bh + 1;
+      const gr = ctx.createLinearGradient(0, gy, c.width, gy);
+      gr.addColorStop(0,    'transparent');
+      gr.addColorStop(0.2,  '#6B5620');
+      gr.addColorStop(0.5,  '#BFA05A');
+      gr.addColorStop(0.8,  '#6B5620');
+      gr.addColorStop(1,    'transparent');
+      ctx.strokeStyle = gr; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(c.width, gy); ctx.stroke();
+
+      const px = 34;
+      ctx.font      = 'italic 300 25px "Playfair Display", serif';
+      ctx.fillStyle = '#BFA05A';
+      ctx.fillText('JEWELS·AI', px, c.height - bh + 40);
+
+      ctx.font      = '300 9px "Didact Gothic", sans-serif';
+      ctx.fillStyle = 'rgba(242,237,227,0.32)';
+      ctx.fillText('VIRTUAL ATELIER', px, c.height - bh + 58);
+
+      ctx.font      = '400 11.5px "Didact Gothic", sans-serif';
+      ctx.fillStyle = 'rgba(242,237,227,0.55)';
+      ctx.fillText('PRODUCT  ' + code.toUpperCase(), px, c.height - bh + 86);
+
+      ctx.font      = '300 10.5px "Didact Gothic", sans-serif';
+      ctx.fillStyle = 'rgba(242,237,227,0.28)';
+      ctx.fillText('Antique-finish luxury jewelry · Hand-polished detail', px, c.height - bh + 112);
+
+      document.getElementById('preview-image').src = c.toDataURL('image/png');
+      document.getElementById('dl-status').classList.remove('show');
+      document.getElementById('dl-status').textContent = '';
+      document.getElementById('preview-modal').classList.add('open');
+    }
+
+    /* ── Download ── */
     function downloadBakedImage() {
-        const link = document.createElement('a');
-        link.download = "Jewels_AI_Snapshot.png";
-        link.href = document.getElementById('preview-image').src;
-        link.click();
+      const st  = document.getElementById('dl-status');
+      const btn = document.getElementById('dl-btn');
+      st.textContent = 'Preparing…'; st.classList.add('show');
+      btn.disabled = true;
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = document.getElementById('preview-image').src;
+        a.download = 'jewels-ai-look.png';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        st.textContent = 'Saved ✓';
+        btn.disabled = false;
+      }, 750);
     }
 
+    /* ── WhatsApp ── */
     async function shareToWhatsApp() {
-        const dataUrl = document.getElementById('preview-image').src;
-        const blob = await (await fetch(dataUrl)).blob();
-        const file = new File([blob], 'my_look.png', { type: 'image/png' });
-
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-                files: [file],
-                title: 'Jewels AI',
-                text: 'Check out my jewelry look from the stars! ✨'
-            });
-        } else {
-            window.open(`https://wa.me/919743600311?text=${encodeURIComponent("I'm interested in this piece from Jewels AI!")}`, '_blank');
-        }
+      const dataUrl = document.getElementById('preview-image').src;
+      const code    = document.getElementById('chip-code').textContent;
+      const blob    = await (await fetch(dataUrl)).blob();
+      const file    = new File([blob], 'my_look.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: 'Jewels AI Look',
+            text: `Hi! Interested in Code: ${code}. Here's my look ✨` });
+          return;
+        } catch(e) { console.warn(e); }
+      }
+      window.open(`https://wa.me/919743600311?text=${encodeURIComponent(`I'm interested in product ${code} from Jewels AI! ✨`)}`, '_blank');
     }
 
+    function closePreview() {
+      document.getElementById('preview-modal').classList.remove('open');
+    }
+
+    /* ── Init ── */
     window.addEventListener('load', () => {
-        setTimeout(() => {
-            const activeBtn = document.querySelector('.cat.active');
-            if (activeBtn) handleStarClick('earrings', activeBtn);
-        }, 1200);
+      setTimeout(() => {
+        const active = document.querySelector('.navpill.active');
+        if (active) handleCat('earrings', active);
+      }, 800);
     });
   </script>
 </body>

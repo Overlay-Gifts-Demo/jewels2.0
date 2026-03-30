@@ -3,229 +3,742 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>JEWELS-AI | High Contrast Liquid UI</title>
-  
+  <title>JEWELS · AI — Maison</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Didact+Gothic&family=Bodoni+Moda:ital,opsz,wght@0,6..96,300;0,6..96,400;1,6..96,300;1,6..96,400&family=Inconsolata:wght@300;400&display=swap" rel="stylesheet">
+
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
   <style>
+    /* ════════════════════════════════════════════
+       TOKENS
+    ════════════════════════════════════════════ */
     :root {
-      --merc-gold: #FFD700;
-      --glass-dark: rgba(0, 0, 0, 0.7);
+      --Au:        #E8C86A;   /* liquid gold */
+      --Au-light:  #FFF0B0;   /* champagne */
+      --Au-dark:   #9A7520;   /* aged gold */
+      --Au-glow:   rgba(232,200,106,0.18);
+      --Au-edge:   rgba(232,200,106,0.4);
+      --marble:    #0A0A10;   /* black marble base */
+      --marble2:   #111118;
+      --marble3:   #1A1A24;
+      --panel-bg:  rgba(8,8,14,0.88);
+      --text:      #EDE6CC;
+      --muted:     rgba(237,230,204,0.38);
+      --ff-disp:   'Bodoni Moda', serif;
+      --ff-ui:     'Didact Gothic', sans-serif;
+      --ff-mono:   'Inconsolata', monospace;
     }
 
-    body, html {
-      margin: 0; padding: 0;
-      background: #000;
-      color: white; font-family: 'Inter', sans-serif;
-      overflow: hidden; height: 100vh;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%; overflow: hidden;
+      background: var(--marble);
+      color: var(--text);
+      font-family: var(--ff-ui);
+      cursor: none;
     }
 
-    #video-container { position: fixed; inset: 0; z-index: 0; }
-    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    /* ── CURSOR ── */
+    #cursor {
+      position: fixed; z-index: 9999; pointer-events: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: 1.5px solid var(--Au);
+      transform: translate(-50%,-50%);
+      transition: width .18s, height .18s, border-color .2s;
+      mix-blend-mode: screen;
+    }
+    #cursor.big { width: 36px; height: 36px; border-color: var(--Au-light); }
+    #cursor-tail {
+      position: fixed; z-index: 9998; pointer-events: none;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--Au-light); opacity: 0.6;
+      transform: translate(-50%,-50%);
+      transition: left .08s, top .08s;
+    }
+
+    /* ── GRAIN ── */
+    body::after {
+      content: ''; position: fixed; inset: 0; z-index: 9500;
+      pointer-events: none; opacity: 0.038;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 220px;
+    }
+
+    /* ════════════════════════════════════════════
+       VIDEO STAGE
+    ════════════════════════════════════════════ */
+    #stage { position: fixed; inset: 0; z-index: 0; background: #000; }
+    video, canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%; object-fit: cover;
+    }
     #webcam { transform: scaleX(-1); }
 
-    /* SIDEBAR */
-    #dock {
+    /* Vignette — heavier on left for panel contrast */
+    #stage::before {
+      content: ''; position: absolute; inset: 0; z-index: 5; pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 80% at 55% 50%, transparent 30%, rgba(10,10,16,0.78) 100%),
+        linear-gradient(to right, rgba(10,10,16,0.75) 0%, transparent 22%);
+    }
+
+    /* ════════════════════════════════════════════
+       LEFT SIDEBAR — BLACK MARBLE PANEL
+    ════════════════════════════════════════════ */
+    #sidebar {
       position: fixed; left: 0; top: 0; bottom: 0;
-      width: 180px; 
-      background: linear-gradient(to right, rgba(0,0,0,0.8) 0%, transparent 100%);
-      display: flex; flex-direction: column; justify-content: center;
-      z-index: 100;
+      width: 192px; z-index: 400;
+      display: flex; flex-direction: column;
+      background: var(--panel-bg);
+      border-right: 1px solid var(--Au-edge);
+      backdrop-filter: blur(40px) saturate(1.4);
+      animation: slideInLeft 1s cubic-bezier(0.16,1,0.3,1) both;
+      overflow: hidden;
+    }
+
+    /* Marble vein texture inside panel */
+    #sidebar::before {
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background:
+        linear-gradient(128deg, transparent 60%, rgba(232,200,106,0.04) 100%),
+        repeating-linear-gradient(
+          72deg,
+          transparent, transparent 80px,
+          rgba(232,200,106,0.025) 81px, transparent 82px
+        );
+    }
+
+    /* Vertical gold rule right side */
+    #sidebar::after {
+      content: ''; position: absolute; right: 0; top: 10%; bottom: 10%;
+      width: 1px;
+      background: linear-gradient(to bottom, transparent, var(--Au-edge) 30%, var(--Au-edge) 70%, transparent);
+    }
+
+    /* ── SIDEBAR HEADER ── */
+    #sb-head {
+      padding: 28px 20px 20px;
+      border-bottom: 1px solid rgba(232,200,106,0.1);
+      flex-shrink: 0;
+    }
+
+    #sb-brand {
+      font-family: var(--ff-disp);
+      font-size: 22px; font-weight: 300;
+      letter-spacing: 0.15em;
+      background: linear-gradient(135deg, var(--Au-light) 0%, var(--Au) 55%, var(--Au-dark) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+
+    #sb-sub {
+      font-family: var(--ff-mono);
+      font-size: 8.5px; font-weight: 300;
+      letter-spacing: 0.4em; text-transform: uppercase;
+      color: var(--muted); margin-top: 3px;
+    }
+
+    /* Gold ornament divider */
+    #sb-divider {
+      margin: 16px 20px 0;
+      display: flex; align-items: center; gap: 8px;
+    }
+    #sb-divider::before, #sb-divider::after {
+      content: ''; flex: 1; height: 1px;
+      background: linear-gradient(to right, transparent, rgba(232,200,106,0.35), transparent);
+    }
+    #sb-divider-gem {
+      font-size: 7px; color: var(--Au-dark);
+    }
+
+    /* ── CATEGORY NAV ── */
+    #sb-nav {
+      flex: 1;
+      display: flex; flex-direction: column;
+      justify-content: center; gap: 6px;
+      padding: 12px 16px;
     }
 
     .cat {
-      display: flex; align-items: center;
-      padding: 20px 25px; cursor: pointer;
-      transition: all 0.3s ease;
+      position: relative;
+      display: flex; align-items: center; gap: 12px;
+      padding: 13px 16px;
+      border-radius: 14px;
+      cursor: none;
+      overflow: hidden;
+      transition: all 0.45s cubic-bezier(0.34,1.56,0.64,1);
+      border: 1px solid transparent;
     }
 
-    .cat span {
-      margin-left: 15px; 
-      font-size: 14px; 
-      font-weight: 800;
-      text-transform: uppercase; 
-      letter-spacing: 2px;
-      color: rgba(255, 255, 255, 0.6);
+    /* hover shimmer */
+    .cat::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(232,200,106,0.05), transparent);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .cat:hover::before { opacity: 1; }
+
+    /* active gold fill */
+    .cat::after {
+      content: ''; position: absolute; inset: 0;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--Au-light) 0%, var(--Au) 55%, var(--Au-dark) 100%);
+      opacity: 0; transition: opacity 0.4s;
+    }
+
+    .cat-icon {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: rgba(232,200,106,0.08);
+      border: 1px solid rgba(232,200,106,0.15);
+      display: flex; align-items: center; justify-content: center;
+      position: relative; z-index: 1;
+      transition: all 0.3s; flex-shrink: 0;
+    }
+
+    .cat-icon svg { width: 14px; height: 14px; }
+    .cat-icon svg path, .cat-icon svg circle, .cat-icon svg rect { stroke: var(--Au); }
+
+    .cat-label {
+      font-family: var(--ff-ui);
+      font-size: 11px; font-weight: 400;
+      letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--muted);
+      transition: color 0.3s;
+      position: relative; z-index: 1;
     }
 
     .cat.active {
-      background: var(--merc-gold);
-      border-radius: 0 50px 50px 0;
-      box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+      border-color: rgba(232,200,106,0.3);
+      box-shadow: 0 0 28px rgba(232,200,106,0.14), inset 0 1px 0 rgba(255,240,176,0.15);
+    }
+    .cat.active::after { opacity: 1; }
+    .cat.active .cat-icon {
+      background: rgba(0,0,0,0.2);
+      border-color: rgba(0,0,0,0.2);
+    }
+    .cat.active .cat-icon svg path,
+    .cat.active .cat-icon svg circle,
+    .cat.active .cat-icon svg rect { stroke: var(--marble); }
+    .cat.active .cat-label { color: var(--marble); font-weight: 400; }
+
+    .cat:hover:not(.active) {
+      border-color: rgba(232,200,106,0.15);
+      transform: translateX(3px);
+    }
+    .cat:hover:not(.active) .cat-label { color: var(--Au); }
+
+    /* ── CAPTURE SECTION ── */
+    #sb-capture {
+      padding: 16px 16px 28px;
+      border-top: 1px solid rgba(232,200,106,0.1);
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      flex-shrink: 0;
     }
 
-    .cat.active span { color: #000 !important; }
-    .cat.active .icon { filter: brightness(0); }
-
-    /* SNAPSHOT BUTTON */
-    .snap-btn-container {
-      padding: 20px 25px;
+    #snap-btn {
+      position: relative;
+      width: 60px; height: 60px;
+      border-radius: 50%; border: none; cursor: none;
+      transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
     }
-    .snap-btn {
-      width: 60px; height: 60px; border-radius: 50%; background: white;
-      border: 3px solid var(--merc-gold); cursor: pointer; font-size: 24px;
+
+    /* Rotating outer ring */
+    #snap-btn::before {
+      content: ''; position: absolute; inset: -4px;
+      border-radius: 50%;
+      background: conic-gradient(var(--Au-light), var(--Au), var(--Au-dark), var(--Au), var(--Au-light));
+      animation: spinGold 6s linear infinite;
+    }
+
+    @keyframes spinGold { to { transform: rotate(360deg); } }
+
+    #snap-btn::after {
+      content: ''; position: absolute; inset: -4px; border-radius: 50%;
+      background: conic-gradient(var(--Au-light), var(--Au), var(--Au-dark), var(--Au), var(--Au-light));
+      animation: spinGold 6s linear infinite reverse;
+      opacity: 0.3;
+    }
+
+    #snap-inner {
+      position: absolute; inset: 4px; border-radius: 50%;
+      background: var(--marble2);
       display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      z-index: 1;
     }
 
-    /* JEWELRY TRAY */
-    #jewelry-options {
-      position: fixed; bottom: 40px; left: 200px; right: 20px;
-      height: 120px; display: flex; align-items: center;
-      overflow-x: auto; gap: 20px; z-index: 90;
+    #snap-btn:hover { transform: scale(1.1); }
+    #snap-btn:hover #snap-inner { background: #18181f; }
+    #snap-btn:active { transform: scale(0.92); }
+
+    #snap-label {
+      font-family: var(--ff-mono);
+      font-size: 8px; letter-spacing: 0.45em;
+      text-transform: uppercase; color: var(--muted);
+    }
+
+    /* ── STATUS BADGE ── */
+    #sb-status {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 6px 12px;
+      background: rgba(5,5,10,0.6);
+      border-top: 1px solid rgba(232,200,106,0.08);
+      display: flex; align-items: center; gap: 7px;
+      font-family: var(--ff-mono); font-size: 8px;
+      letter-spacing: 0.3em; color: var(--muted);
+      text-transform: uppercase;
+    }
+    #status-pip {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--Au); box-shadow: 0 0 6px var(--Au);
+      animation: pip 2s ease-in-out infinite;
+    }
+    @keyframes pip { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+    /* ════════════════════════════════════════════
+       BOTTOM JEWELRY SHELF
+    ════════════════════════════════════════════ */
+    #tray-wrap {
+      position: fixed; bottom: 0; left: 192px; right: 0;
+      z-index: 300; padding: 0 20px 20px;
+      animation: slideUp 1.1s cubic-bezier(0.16,1,0.3,1) 0.2s both;
+    }
+
+    #tray-meta {
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 10px; padding: 0 4px;
+    }
+
+    #tray-name {
+      font-family: var(--ff-disp);
+      font-size: 11px; font-style: italic;
+      letter-spacing: 0.2em; color: var(--muted);
+    }
+
+    #tray-rule {
+      flex: 1; height: 1px;
+      background: linear-gradient(to right, var(--Au-edge), transparent);
+    }
+
+    #tray-count {
+      font-family: var(--ff-mono);
+      font-size: 8.5px; letter-spacing: 0.25em;
+      color: var(--muted);
+    }
+
+    #tray {
+      display: flex; align-items: flex-end; gap: 14px;
+      overflow-x: auto; overflow-y: hidden;
+      padding: 16px 18px 18px;
+      background:
+        linear-gradient(135deg, rgba(10,10,16,0.93) 0%, rgba(18,18,26,0.9) 100%);
+      border: 1px solid var(--Au-edge);
+      border-radius: 22px;
+      backdrop-filter: blur(44px) saturate(1.3);
       scrollbar-width: none;
+      -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
     }
-    #jewelry-options::-webkit-scrollbar { display: none; }
+    #tray::-webkit-scrollbar { display: none; }
 
-    #jewelry-options img, .thumb-btn {
-      min-width: 90px; height: 90px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 15px; border: 1px solid rgba(255,255,255,0.2);
-      object-fit: contain; padding: 10px; cursor: pointer;
-      transition: 0.3s;
+    .jcard {
+      flex-shrink: 0;
+      width: 82px; height: 82px;
+      background: linear-gradient(145deg, var(--marble3), var(--marble2));
+      border: 1px solid rgba(232,200,106,0.18);
+      border-radius: 18px;
+      overflow: hidden; cursor: none; position: relative;
+      transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1);
     }
 
-    /* PREVIEW MODAL */
+    .jcard img { width:100%; height:100%; object-fit:contain; padding:10px; }
+
+    /* Prismatic under-glow */
+    .jcard::before {
+      content: '';
+      position: absolute; bottom: -12px; left: 10%; right: 10%; height: 12px;
+      background: radial-gradient(ellipse, rgba(232,200,106,0.35), transparent);
+      filter: blur(4px); opacity: 0; transition: opacity 0.3s;
+      z-index: -1;
+    }
+
+    .jcard:hover {
+      transform: translateY(-10px) scale(1.06);
+      border-color: var(--Au);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.55), 0 0 20px rgba(232,200,106,0.18);
+    }
+    .jcard:hover::before { opacity: 1; }
+
+    .jcard.active {
+      border-color: var(--Au-light);
+      box-shadow: 0 0 0 2px var(--Au), 0 12px 28px rgba(232,200,106,0.28);
+      transform: translateY(-6px);
+    }
+    .jcard.active::after {
+      content: '◆'; position: absolute; top: 4px; right: 6px;
+      font-size: 8px; color: var(--Au);
+    }
+
+    /* Skeleton */
+    .jcard-sk {
+      background: linear-gradient(90deg, var(--marble2) 25%, var(--marble3) 50%, var(--marble2) 75%);
+      background-size: 300% 100%; animation: shimmer 1.9s infinite;
+    }
+    @keyframes shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
+
+    /* ════════════════════════════════════════════
+       FLASH
+    ════════════════════════════════════════════ */
+    #flash {
+      position: fixed; inset: 0; z-index: 8000;
+      background: #fff; opacity: 0; pointer-events: none;
+    }
+
+    /* ════════════════════════════════════════════
+       PREVIEW MODAL
+    ════════════════════════════════════════════ */
     #preview-modal {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98);
-      z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
+      display: none; position: fixed; inset: 0; z-index: 7000;
+      background: rgba(5,5,10,0.97);
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 32px; backdrop-filter: blur(60px);
     }
-    #preview-image { max-width: 90%; max-height: 65%; border-radius: 15px; border: 2px solid var(--merc-gold); }
-    
-    .preview-actions { margin-top: 25px; display: flex; gap: 15px; width: 100%; max-width: 400px; }
-    .preview-actions button {
-      flex: 1; padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;
-    }
-    .btn-dl { background: var(--merc-gold); color: black; }
-    .btn-wa { background: #25D366; color: white; }
-    .close-preview { position: absolute; top: 30px; right: 30px; font-size: 40px; cursor: pointer; }
+    #preview-modal.open { display: flex; animation: mfade .35s ease; }
+    @keyframes mfade { from { opacity:0; } to { opacity:1; } }
 
-    #flash-overlay { position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 999; }
+    #modal-top {
+      display: flex; align-items: center; gap: 18px; margin-bottom: 20px;
+    }
+    .mo-rule { height: 1px; width: 70px; background: var(--Au-edge); }
+    #modal-title {
+      font-family: var(--ff-disp); font-style: italic;
+      font-size: 15px; letter-spacing: 0.25em; color: var(--muted);
+    }
+
+    #preview-frame {
+      position: relative; overflow: hidden;
+      border-radius: 16px;
+      border: 1px solid rgba(232,200,106,0.45);
+      box-shadow: 0 50px 100px rgba(0,0,0,0.85), 0 0 0 1px var(--Au-dark);
+      max-width: 88vw; max-height: 58vh;
+    }
+
+    /* Corner brackets */
+    #preview-frame::before {
+      content: ''; position: absolute; top: 9px; left: 9px; z-index: 2;
+      width: 22px; height: 22px;
+      border-top: 1.5px solid var(--Au-light); border-left: 1.5px solid var(--Au-light);
+    }
+    #preview-frame::after {
+      content: ''; position: absolute; bottom: 9px; right: 9px; z-index: 2;
+      width: 22px; height: 22px;
+      border-bottom: 1.5px solid var(--Au-light); border-right: 1.5px solid var(--Au-light);
+    }
+
+    #preview-image { display: block; max-width: 100%; max-height: 58vh; }
+
+    #preview-piece {
+      margin-top: 12px;
+      font-family: var(--ff-disp); font-style: italic;
+      font-size: 16px; letter-spacing: 0.15em; color: var(--Au);
+    }
+
+    #modal-actions { margin-top: 20px; display: flex; gap: 14px; }
+
+    .m-btn {
+      padding: 12px 32px;
+      border-radius: 999px; border: none; cursor: none;
+      font-family: var(--ff-ui); font-size: 10px;
+      letter-spacing: 0.35em; text-transform: uppercase;
+      transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .m-btn:hover { transform: translateY(-3px); }
+
+    .m-btn-gold {
+      background: linear-gradient(135deg, var(--Au-light) 0%, var(--Au) 100%);
+      color: var(--marble);
+      box-shadow: 0 8px 24px rgba(232,200,106,0.35);
+    }
+
+    .m-btn-wa {
+      background: transparent;
+      border: 1px solid rgba(37,211,102,0.45);
+      color: #7ef5a8;
+    }
+    .m-btn-wa:hover { background: rgba(37,211,102,0.1); border-color: rgba(37,211,102,0.7); }
+
+    #close-btn {
+      position: absolute; top: 22px; right: 26px;
+      width: 38px; height: 38px; border-radius: 50%;
+      border: 1px solid rgba(232,200,106,0.25);
+      background: transparent; cursor: none;
+      color: var(--muted); font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.3s;
+    }
+    #close-btn:hover {
+      border-color: var(--Au); color: var(--Au-light);
+      transform: rotate(90deg);
+      box-shadow: 0 0 14px rgba(232,200,106,0.2);
+    }
+
+    /* ════════════════════════════════════════════
+       ANIMATIONS
+    ════════════════════════════════════════════ */
+    @keyframes slideInLeft {
+      from { opacity:0; transform:translateX(-28px); }
+      to   { opacity:1; transform:translateX(0); }
+    }
+    @keyframes slideUp {
+      from { opacity:0; transform:translateY(22px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    @media (max-width: 480px) {
+      #sidebar { width: 160px; }
+      #tray-wrap { left: 160px; padding: 0 10px 16px; }
+      .jcard { width: 68px; height: 68px; }
+    }
   </style>
 </head>
 <body>
 
-  <div id="app">
-    <div id="flash-overlay"></div>
+  <div id="cursor"></div>
+  <div id="cursor-tail"></div>
+  <div id="flash"></div>
 
-    <div id="video-container">
-      <video id="webcam" autoplay playsinline muted></video>
-      <canvas id="overlay"></canvas>
-      <video id="remote-video" autoplay playsinline></video>
+  <!-- STAGE -->
+  <div id="stage">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <video id="remote-video" autoplay playsinline></video>
+  </div>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div id="sb-head">
+      <div id="sb-brand">Jewels · AI</div>
+      <div id="sb-sub">Maison Atelier</div>
+      <div id="sb-divider"><div id="sb-divider-gem">✦</div></div>
     </div>
 
-    <div id="dock">
-      <div class="cat active" onclick="handleCategory('earrings', this)">
-          <span class="icon">💎</span><span>Earrings</span>
-      </div>
-      <div class="cat" onclick="handleCategory('chains', this)">
-          <span class="icon">🔗</span><span>Chains</span>
-      </div>
-      <div class="cat" onclick="handleCategory('rings', this)">
-          <span class="icon">💍</span><span>Rings</span>
-      </div>
-      <div class="cat" onclick="handleCategory('bangles', this)">
-          <span class="icon">✨</span><span>Bangles</span>
-      </div>
-      <div class="snap-btn-container">
-          <button class="snap-btn" onclick="captureSnapshot()">📸</button>
-      </div>
-    </div>
-
-    <div id="jewelry-options"></div>
-
-    <div id="preview-modal">
-        <span class="close-preview" onclick="closePreview()">&times;</span>
-        <img id="preview-image" src="">
-        <div class="preview-actions">
-            <button class="btn-dl" onclick="downloadBakedImage()">📥 DOWNLOAD</button>
-            <button class="btn-wa" onclick="shareToWhatsApp()">🟢 WHATSAPP</button>
+    <nav id="sb-nav">
+      <!-- EARRINGS -->
+      <div class="cat active" data-type="earrings" onclick="handleCategory('earrings',this)">
+        <div class="cat-icon">
+          <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="5" cy="4" r="2" stroke-width="1.2"/>
+            <path d="M5 6 Q3 10 5 13" stroke-width="1.2" stroke-linecap="round"/>
+            <circle cx="11" cy="4" r="2" stroke-width="1.2"/>
+            <path d="M11 6 Q9 10 11 13" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
         </div>
+        <div class="cat-label">Earrings</div>
+      </div>
+      <!-- CHAINS -->
+      <div class="cat" data-type="chains" onclick="handleCategory('chains',this)">
+        <div class="cat-icon">
+          <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 8 Q4 5 6 8 Q8 11 10 8 Q12 5 14 8" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="cat-label">Chains</div>
+      </div>
+      <!-- RINGS -->
+      <div class="cat" data-type="rings" onclick="handleCategory('rings',this)">
+        <div class="cat-icon">
+          <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="8" cy="9" r="4.5" stroke-width="1.2"/>
+            <path d="M5.5 5.5 L8 3 L10.5 5.5" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="cat-label">Rings</div>
+      </div>
+      <!-- BANGLES -->
+      <div class="cat" data-type="bangles" onclick="handleCategory('bangles',this)">
+        <div class="cat-icon">
+          <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="8" cy="8" rx="5.5" ry="5.5" stroke-width="1.2"/>
+            <ellipse cx="8" cy="8" rx="3" ry="3" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <div class="cat-label">Bangles</div>
+      </div>
+    </nav>
+
+    <div id="sb-capture">
+      <div id="snap-btn" onclick="captureSnapshot()">
+        <div id="snap-inner">
+          <svg width="22" height="20" viewBox="0 0 22 20" fill="none">
+            <rect x="1" y="4" width="20" height="14" rx="3" stroke="#E8C86A" stroke-width="1.3"/>
+            <circle cx="11" cy="11" r="4" stroke="#E8C86A" stroke-width="1.3"/>
+            <path d="M7 4L8.5 1.5h5L15 4" stroke="#E8C86A" stroke-width="1.3" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+      <div id="snap-label">Capture Look</div>
+    </div>
+
+    <div id="sb-status">
+      <div id="status-pip"></div>
+      <span id="status-txt">AR · Live</span>
+    </div>
+  </aside>
+
+  <!-- TRAY -->
+  <div id="tray-wrap">
+    <div id="tray-meta">
+      <div id="tray-name">Current Collection</div>
+      <div id="tray-rule"></div>
+      <div id="tray-count">— Select a piece</div>
+    </div>
+    <div id="tray"></div>
+  </div>
+
+  <!-- MODAL -->
+  <div id="preview-modal">
+    <button id="close-btn" onclick="closePreview()">✕</button>
+    <div id="modal-top">
+      <div class="mo-rule"></div>
+      <div id="modal-title">Your Signature Look</div>
+      <div class="mo-rule"></div>
+    </div>
+    <div id="preview-frame">
+      <img id="preview-image" src="" alt="Your Look">
+    </div>
+    <div id="preview-piece">Curated Selection</div>
+    <div id="modal-actions">
+      <button class="m-btn m-btn-gold" onclick="downloadBakedImage()">↓ &nbsp;Download</button>
+      <button class="m-btn m-btn-wa"   onclick="shareToWhatsApp()">WhatsApp</button>
     </div>
   </div>
 
   <script src="core.js"></script>
-
   <script>
-    function handleCategory(type, element) {
-        document.querySelectorAll('.cat').forEach(nav => nav.classList.remove('active'));
-        element.classList.add('active');
-        if (typeof selectJewelryType === "function") selectJewelryType(type);
+    /* ─── CURSOR ─── */
+    const cur  = document.getElementById('cursor');
+    const tail = document.getElementById('cursor-tail');
+    document.addEventListener('mousemove', e => {
+      cur.style.left   = e.clientX+'px'; cur.style.top   = e.clientY+'px';
+      tail.style.left  = e.clientX+'px'; tail.style.top  = e.clientY+'px';
+    });
+    document.querySelectorAll('.cat,[onclick],button,.jcard').forEach(el => {
+      el.addEventListener('mouseenter', () => cur.classList.add('big'));
+      el.addEventListener('mouseleave', () => cur.classList.remove('big'));
+    });
+
+    /* ─── SKELETONS ─── */
+    function renderSkeletons(n=7){
+      const t=document.getElementById('tray'); t.innerHTML='';
+      document.getElementById('tray-count').textContent='— Loading';
+      for(let i=0;i<n;i++){
+        const c=document.createElement('div'); c.className='jcard jcard-sk';
+        t.appendChild(c);
+      }
     }
 
-    // Capture, Merge Layers and Bake Description
-    function captureSnapshot() {
-        const flash = document.getElementById('flash-overlay');
-        flash.style.opacity = '1';
-        setTimeout(() => flash.style.opacity = '0', 150);
+    window.populateCarousel=function(items){
+      const t=document.getElementById('tray'); t.innerHTML='';
+      document.getElementById('tray-count').textContent=`— ${items.length} pieces`;
+      items.forEach(item=>{
+        const card=document.createElement('div'); card.className='jcard';
+        const img=document.createElement('img'); img.src=item.src; img.alt=item.label||'';
+        card.appendChild(img);
+        card.onclick=()=>{
+          document.querySelectorAll('.jcard').forEach(c=>c.classList.remove('active'));
+          card.classList.add('active');
+          window.currentJewelry=item.src;
+          document.getElementById('preview-piece').textContent=
+            (item.label||item.src.split('/').pop().split('.')[0]).replace(/_/g,' ');
+          if(typeof selectJewelry==='function') selectJewelry(item.src);
+        };
+        t.appendChild(card);
+      });
+    };
 
-        const video = document.getElementById('webcam');
-        const arLayer = document.getElementById('overlay');
-        
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
+    renderSkeletons();
 
-        // 1. Draw User (Mirrored)
-        ctx.save();
-        ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        ctx.restore();
-
-        // 2. Draw Jewelry
-        ctx.drawImage(arLayer, 0, 0, canvas.width, canvas.height);
-
-        // 3. Bake Description Bar
-        const fileName = window.currentJewelry ? window.currentJewelry.split('/').pop().split('.')[0] : "Product_Selection";
-        const boxH = 120;
-        ctx.fillStyle = "rgba(0,0,0,0.85)";
-        ctx.fillRect(0, canvas.height - boxH, canvas.width, boxH);
-        ctx.strokeStyle = "#FFD700"; ctx.lineWidth = 4;
-        ctx.strokeRect(0, canvas.height - boxH, canvas.width, boxH);
-
-        ctx.fillStyle = "#FFD700"; ctx.font = "bold 32px Arial";
-        ctx.fillText("Product Description", 40, canvas.height - 70);
-        ctx.fillStyle = "white"; ctx.font = "24px Arial";
-        ctx.fillText("Item Code: " + fileName, 40, canvas.height - 30);
-
-        document.getElementById('preview-image').src = canvas.toDataURL("image/png");
-        document.getElementById('preview-modal').style.display = 'flex';
+    /* ─── CATEGORY ─── */
+    function handleCategory(type, el){
+      document.querySelectorAll('.cat').forEach(c=>c.classList.remove('active'));
+      el.classList.add('active');
+      renderSkeletons();
+      document.getElementById('status-txt').textContent=type.toUpperCase()+' · LIVE';
+      if(typeof selectJewelryType==='function') selectJewelryType(type, el);
     }
 
-    function closePreview() { document.getElementById('preview-modal').style.display = 'none'; }
+    /* ─── CAPTURE ─── */
+    function captureSnapshot(){
+      const fl=document.getElementById('flash');
+      fl.style.transition='none'; fl.style.opacity='1';
+      requestAnimationFrame(()=>{ fl.style.transition='opacity 0.18s'; fl.style.opacity='0'; });
 
-    function downloadBakedImage() {
-        const link = document.createElement('a');
-        link.download = "My_Jewels_Look.png";
-        link.href = document.getElementById('preview-image').src;
-        link.click();
+      const video=document.getElementById('webcam');
+      const ar=document.getElementById('overlay');
+      const cvs=document.createElement('canvas');
+      const ctx=cvs.getContext('2d');
+      cvs.width=video.videoWidth||1280; cvs.height=video.videoHeight||720;
+
+      ctx.save(); ctx.translate(cvs.width,0); ctx.scale(-1,1);
+      ctx.drawImage(video,0,0,cvs.width,cvs.height); ctx.restore();
+      ctx.drawImage(ar,0,0,cvs.width,cvs.height);
+
+      // Premium branding band
+      const bH=106, y0=cvs.height-bH;
+      const g=ctx.createLinearGradient(0,y0,0,cvs.height);
+      g.addColorStop(0,'rgba(8,8,14,0.9)'); g.addColorStop(1,'rgba(14,12,6,0.97)');
+      ctx.fillStyle=g; ctx.fillRect(0,y0,cvs.width,bH);
+      // Gold rule
+      ctx.strokeStyle='rgba(232,200,106,0.55)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(0,y0+1); ctx.lineTo(cvs.width,y0+1); ctx.stroke();
+      // Brand
+      ctx.font='300 24px Georgia,serif'; ctx.fillStyle='#E8C86A'; ctx.letterSpacing='7px';
+      ctx.fillText('JEWELS · AI',30,y0+40);
+      ctx.font='300 9px Courier,monospace'; ctx.fillStyle='rgba(237,230,204,0.4)'; ctx.letterSpacing='4px';
+      ctx.fillText('MAISON ATELIER',31,y0+60);
+      // Item
+      const item=window.currentJewelry
+        ? window.currentJewelry.split('/').pop().split('.')[0].replace(/_/g,' ')
+        : 'Curated Selection';
+      ctx.font='300 12px Georgia,serif'; ctx.fillStyle='rgba(237,230,204,0.72)'; ctx.letterSpacing='2px';
+      ctx.fillText('Item: '+item,30,y0+85);
+      // Corner accents
+      ctx.strokeStyle='rgba(232,200,106,0.5)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(30,y0+10); ctx.lineTo(30,y0+20); ctx.moveTo(30,y0+10); ctx.lineTo(44,y0+10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cvs.width-30,y0+10); ctx.lineTo(cvs.width-30,y0+20); ctx.moveTo(cvs.width-30,y0+10); ctx.lineTo(cvs.width-44,y0+10); ctx.stroke();
+
+      document.getElementById('preview-image').src=cvs.toDataURL('image/png');
+      document.getElementById('preview-modal').classList.add('open');
     }
 
-    async function shareToWhatsApp() {
-        const dataUrl = document.getElementById('preview-image').src;
-        const blob = await (await fetch(dataUrl)).blob();
-        const file = new File([blob], 'my_look.png', { type: 'image/png' });
+    function closePreview(){ document.getElementById('preview-modal').classList.remove('open'); }
 
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-                files: [file],
-                title: 'Jewels AI',
-                text: 'Check out my jewelry look! ✨'
-            });
-        } else {
-            window.open(`https://wa.me/919743600311?text=${encodeURIComponent("Check out my Jewels AI look!")}`, '_blank');
-        }
+    function downloadBakedImage(){
+      const a=document.createElement('a'); a.download='JewelsAI_Maison.png';
+      a.href=document.getElementById('preview-image').src; a.click();
     }
 
-    window.addEventListener('load', () => {
-        setTimeout(() => {
-            const activeBtn = document.querySelector('.cat.active');
-            if (activeBtn) handleCategory('earrings', activeBtn);
-        }, 1200);
+    async function shareToWhatsApp(){
+      const url=document.getElementById('preview-image').src;
+      const blob=await(await fetch(url)).blob();
+      const file=new File([blob],'my_look.png',{type:'image/png'});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:'Jewels AI',text:'My curated look ✨'});
+      } else {
+        window.open(`https://wa.me/919743600311?text=${encodeURIComponent('Check out my Jewels AI look! ✨')}`,'_blank');
+      }
+    }
+
+    window.addEventListener('load',()=>{
+      setTimeout(()=>{
+        const a=document.querySelector('.cat.active');
+        if(a) handleCategory(a.dataset.type,a);
+      },1200);
     });
   </script>
 </body>

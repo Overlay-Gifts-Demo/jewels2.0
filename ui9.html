@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>JEWELS·AI — Virtual Try-On</title>
-  
+  <title>JEWELS·AI — Atelier Virtuel</title>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Cinzel:wght@400;500&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
 
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
@@ -18,624 +18,785 @@
 
   <style>
     :root {
-      --gold:        #c9a84c;
-      --gold-light:  #e8d08a;
-      --gold-dark:   #8a6b22;
-      --obsidian:    #0a0a0a;
-      --charcoal:    #111111;
-      --panel:       rgba(10,10,10,0.82);
-      --glass:       rgba(201,168,76,0.08);
-      --glass-border:rgba(201,168,76,0.22);
-      --text-primary:#f5f0e8;
-      --text-muted:  rgba(245,240,232,0.45);
-      --radius:      14px;
-      --font-display:'Cormorant Garamond', serif;
-      --font-body:   'Montserrat', sans-serif;
+      --g0: #0B0A08;
+      --g1: #141210;
+      --gold:       #C9A84C;
+      --gold-hi:    #F0D98C;
+      --gold-lo:    #7A621E;
+      --gold-warm:  #E2B96A;
+      --ivory:      #F4EFE4;
+      --ivory-dim:  rgba(244,239,228,0.42);
+      --ivory-faint:rgba(244,239,228,0.16);
+      --glass:      rgba(255,255,255,0.04);
+      --glass-rim:  rgba(201,168,76,0.28);
+      --glass-rim2: rgba(201,168,76,0.12);
+      --r-sm: 8px;
+      --r-md: 14px;
+      --r-lg: 22px;
+      --r-pill: 100px;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    body {
-      background: var(--obsidian);
-      font-family: var(--font-body);
-      color: var(--text-primary);
+    html, body {
+      width: 100%; height: 100dvh;
+      background: var(--g0);
+      color: var(--ivory);
+      font-family: 'Jost', sans-serif;
+      font-weight: 300;
       overflow: hidden;
-      height: 100dvh;
     }
 
-    /* ── Noise texture overlay ── */
-    body::before {
-      content: '';
-      position: fixed; inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
-      pointer-events: none; z-index: 1; opacity: 0.55;
+    /* GRAIN */
+    #grain {
+      position: fixed; inset: 0; z-index: 998; pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+      opacity: 0.028; mix-blend-mode: overlay;
     }
 
-    /* ── Camera & Canvas ── */
+    /* CAMERA */
     #video-container {
-      position: fixed; inset: 0;
-      background: #050505;
-      z-index: 0;
+      position: fixed; inset: 0; z-index: 0;
+      background: #050403;
     }
     video, canvas {
-      position: absolute;
+      position: absolute; inset: 0;
       width: 100%; height: 100%;
       object-fit: cover;
     }
-    #remote-video { z-index: 1; }
 
-    /* ── Brand header ── */
-    #brand-header {
-      position: fixed; top: 0; left: 0; right: 0;
-      padding: 18px 28px 14px;
-      display: flex; align-items: center; justify-content: space-between;
-      background: linear-gradient(to bottom, rgba(0,0,0,0.78) 0%, transparent 100%);
-      z-index: 10;
-      animation: fadeDown 0.9s ease both;
-    }
-    @keyframes fadeDown { from { opacity:0; transform: translateY(-12px); } to { opacity:1; transform: translateY(0); } }
-
-    .brand-name {
-      font-family: var(--font-display);
-      font-size: 28px;
-      font-weight: 300;
-      letter-spacing: 0.22em;
-      color: var(--gold-light);
-      text-transform: uppercase;
-    }
-    .brand-name span {
-      font-style: italic;
-      color: var(--gold);
-      font-weight: 600;
-    }
-    .brand-tagline {
-      font-size: 9px;
-      letter-spacing: 0.35em;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      margin-top: 2px;
-    }
-    .header-badge {
-      font-size: 9px;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--gold);
-      border: 1px solid var(--glass-border);
-      background: var(--glass);
-      padding: 6px 12px;
-      border-radius: 20px;
-      backdrop-filter: blur(12px);
+    /* Cinematic vignette */
+    #vignette {
+      position: fixed; inset: 0; z-index: 2; pointer-events: none;
+      background:
+        radial-gradient(ellipse 70% 55% at 50% 50%, transparent 30%, rgba(0,0,0,0.55) 100%),
+        linear-gradient(to bottom, rgba(0,0,0,0.62) 0%, transparent 22%, transparent 68%, rgba(0,0,0,0.88) 100%);
     }
 
-    /* ── Gold accent lines ── */
-    .gold-line {
+    /* SCAN LINE */
+    #scanline {
       position: fixed; left: 0; right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--gold-dark), var(--gold), var(--gold-dark), transparent);
-      z-index: 9;
-      opacity: 0.55;
-    }
-    .gold-line.top    { top: 70px; }
-    .gold-line.bottom { bottom: 170px; }
-
-    /* ── Category dock ── */
-    #dock {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      height: 80px;
-      background: linear-gradient(to top, rgba(5,5,5,0.97), rgba(10,10,10,0.88));
-      border-top: 1px solid var(--glass-border);
-      display: flex; justify-content: space-around; align-items: center;
-      padding: 0 12px;
-      z-index: 10;
-      backdrop-filter: blur(24px);
-      animation: fadeUp 0.9s ease both;
-    }
-    @keyframes fadeUp { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
-
-    .cat {
-      font-family: var(--font-body);
-      font-size: 10px;
-      font-weight: 500;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      padding: 10px 16px;
-      border-radius: 30px;
-      cursor: pointer;
-      transition: all 0.35s ease;
-      position: relative;
-    }
-    .cat::after {
-      content: '';
-      position: absolute;
-      bottom: 4px; left: 50%;
-      transform: translateX(-50%);
-      width: 0; height: 1px;
-      background: var(--gold);
-      transition: width 0.35s ease;
-    }
-    .cat:hover { color: var(--gold-light); }
-    .cat.active {
-      color: var(--gold);
-      background: var(--glass);
-      border: 1px solid var(--glass-border);
-    }
-    .cat.active::after { width: 60%; }
-
-    /* ── Jewelry options strip ── */
-    #jewelry-options {
-      position: fixed; bottom: 80px; left: 0; right: 0;
-      height: 90px;
-      display: flex; overflow-x: auto; gap: 10px;
-      padding: 10px 16px;
-      z-index: 10;
-      background: linear-gradient(to top, rgba(5,5,5,0.72), transparent);
-      scrollbar-width: none;
-    }
-    #jewelry-options::-webkit-scrollbar { display: none; }
-
-    /* ── Capture button ── */
-    #capture-trigger {
-      position: fixed;
-      bottom: 186px;
-      right: 24px;
-      width: 64px; height: 64px;
-      border-radius: 50%;
-      background: linear-gradient(145deg, var(--gold-light), var(--gold), var(--gold-dark));
-      border: none;
-      cursor: pointer;
-      z-index: 20;
-      box-shadow: 0 0 0 1px rgba(201,168,76,0.3), 0 8px 30px rgba(201,168,76,0.35), 0 2px 8px rgba(0,0,0,0.6);
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-      display: flex; align-items: center; justify-content: center;
-      animation: fadeUp 1s ease 0.2s both;
-    }
-    #capture-trigger:hover {
-      transform: scale(1.07);
-      box-shadow: 0 0 0 2px rgba(201,168,76,0.45), 0 12px 40px rgba(201,168,76,0.5), 0 2px 8px rgba(0,0,0,0.6);
-    }
-    #capture-trigger:active { transform: scale(0.95); }
-
-    /* Camera icon SVG inside button */
-    #capture-trigger svg { width: 26px; height: 26px; }
-
-    /* ── Flash overlay ── */
-    #flash-overlay {
-      position: fixed; inset: 0;
-      background: white;
+      height: 1px; z-index: 4; pointer-events: none;
+      background: linear-gradient(90deg, transparent 0%, var(--gold-lo) 25%, var(--gold) 50%, var(--gold-lo) 75%, transparent 100%);
       opacity: 0;
-      pointer-events: none;
-      z-index: 999;
-      transition: opacity 0.12s ease;
+      animation: scanMove 7s ease-in-out infinite 1.8s;
+    }
+    @keyframes scanMove {
+      0%   { top: 18%; opacity: 0; }
+      5%   { opacity: 0.45; }
+      90%  { opacity: 0.3; }
+      100% { top: 76%; opacity: 0; }
     }
 
-    /* ── Preview Modal ── */
-    #preview-modal {
-      display: none;
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.92);
-      z-index: 1000;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      backdrop-filter: blur(20px);
-      animation: modalIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    /* AR CORNER BRACKETS */
+    .arc {
+      position: fixed; z-index: 5; pointer-events: none;
+      width: 36px; height: 36px;
     }
-    #preview-modal.visible { display: flex; }
-    @keyframes modalIn {
-      from { opacity:0; transform: scale(0.96); }
-      to   { opacity:1; transform: scale(1); }
+    .arc svg { width: 100%; height: 100%; }
+    .arc.tl { top: 84px;  left: 18px; }
+    .arc.tr { top: 84px;  right: 18px; }
+    .arc.bl { bottom: 250px; left: 18px; }
+    .arc.br { bottom: 250px; right: 18px; }
+    .arc.tr svg { transform: scaleX(-1); }
+    .arc.bl svg { transform: scaleY(-1); }
+    .arc.br svg { transform: scale(-1,-1); }
+
+    /* HEADER */
+    #header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+      padding: 0 24px;
+      height: 72px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%);
+      animation: revealDown 0.8s cubic-bezier(0.22,1,0.36,1) both;
+    }
+    @keyframes revealDown {
+      from { opacity: 0; transform: translateY(-16px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* Close */
-    #close-btn {
-      position: absolute; top: 22px; right: 22px;
-      width: 40px; height: 40px;
-      border-radius: 50%;
+    .wordmark { display: flex; flex-direction: column; gap: 1px; }
+    .wordmark-line1 {
+      font-family: 'Cinzel', serif;
+      font-size: 17px; font-weight: 400;
+      letter-spacing: 0.35em; color: var(--ivory); line-height: 1;
+    }
+    .wordmark-line1 em { font-style: normal; color: var(--gold-warm); }
+    .wordmark-line2 {
+      font-family: 'Jost', sans-serif;
+      font-size: 8px; font-weight: 200;
+      letter-spacing: 0.55em; color: var(--ivory-dim);
+      text-transform: uppercase;
+    }
+
+    .header-right { display: flex; align-items: center; gap: 10px; }
+
+    .ar-badge {
+      display: flex; align-items: center; gap: 7px;
       background: var(--glass);
-      border: 1px solid var(--glass-border);
+      border: 0.5px solid var(--glass-rim);
+      border-radius: var(--r-pill);
+      padding: 7px 14px;
+      backdrop-filter: blur(20px);
+      font-size: 9px; letter-spacing: 0.28em;
+      text-transform: uppercase; color: var(--gold);
+    }
+    .ar-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #3DFF8F; box-shadow: 0 0 6px #3DFF8F;
+      animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .hdr-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--glass);
+      border: 0.5px solid rgba(255,255,255,0.1);
       display: flex; align-items: center; justify-content: center;
       cursor: pointer;
-      color: var(--text-primary);
-      font-size: 18px;
-      transition: background 0.2s;
+      transition: border-color 0.25s, background 0.25s;
+      color: var(--ivory-dim); backdrop-filter: blur(16px);
     }
-    #close-btn:hover { background: rgba(201,168,76,0.15); }
-
-    /* Modal label */
-    .modal-label {
-      font-family: var(--font-display);
-      font-size: 11px;
-      letter-spacing: 0.35em;
-      text-transform: uppercase;
-      color: var(--gold);
-      margin-bottom: 18px;
+    .hdr-btn:hover {
+      border-color: var(--glass-rim);
+      color: var(--gold-hi);
+      background: rgba(201,168,76,0.08);
     }
 
-    /* Preview image frame */
-    .preview-frame {
-      position: relative;
-      border: 1px solid var(--glass-border);
-      border-radius: var(--radius);
+    /* GOLD RULES */
+    .gold-rule {
+      position: fixed; left: 0; right: 0; z-index: 6; pointer-events: none; height: 1px;
+    }
+    .gold-rule::before {
+      content: ''; display: block; height: 1px;
+      background: linear-gradient(90deg,
+        transparent 0%, var(--gold-lo) 12%, var(--gold) 35%,
+        var(--gold-hi) 50%, var(--gold) 65%, var(--gold-lo) 88%, transparent 100%
+      );
+      opacity: 0.45;
+    }
+    .gold-rule.top    { top: 72px; }
+    .gold-rule.bottom { bottom: 238px; }
+
+    /* AR SIDE METRICS */
+    #ar-panel {
+      position: fixed; right: 16px; top: 50%;
+      transform: translateY(-50%);
+      z-index: 15; display: flex; flex-direction: column; gap: 8px;
+      animation: revealDown 0.8s ease 0.55s both;
+    }
+    .ar-chip {
+      background: rgba(8,7,5,0.62);
+      border: 0.5px solid var(--glass-rim2);
+      border-radius: var(--r-sm);
+      padding: 8px 11px; text-align: right;
+      backdrop-filter: blur(24px); min-width: 68px;
+    }
+    .ar-chip-label {
+      font-size: 7px; letter-spacing: 0.25em;
+      text-transform: uppercase; color: var(--ivory-faint); margin-bottom: 3px;
+    }
+    .ar-chip-value {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 15px; font-weight: 400;
+      color: var(--gold-warm); letter-spacing: 0.04em; line-height: 1;
+    }
+
+    /* BOTTOM PANEL */
+    #bottom-panel {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+      padding: 0 14px env(safe-area-inset-bottom, 0px);
+      animation: revealUp 0.8s cubic-bezier(0.22,1,0.36,1) 0.15s both;
+    }
+    @keyframes revealUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    #shelf {
+      background: rgba(8,7,5,0.72);
+      border: 0.5px solid var(--glass-rim);
+      border-radius: var(--r-lg) var(--r-lg) 0 0;
+      backdrop-filter: blur(48px) saturate(1.5);
       overflow: hidden;
-      box-shadow: 0 0 0 1px rgba(201,168,76,0.1), 0 30px 80px rgba(0,0,0,0.8);
+    }
+    #shelf::before {
+      content: ''; display: block; height: 1px;
+      background: linear-gradient(90deg,
+        transparent, var(--gold-lo) 20%, var(--gold) 50%, var(--gold-lo) 80%, transparent
+      );
+      opacity: 0.6;
+    }
+
+    #shelf-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px 6px;
+    }
+    #shelf-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 18px; font-weight: 400; font-style: italic;
+      color: var(--ivory); letter-spacing: 0.04em;
+    }
+    #shelf-count {
+      font-size: 9px; letter-spacing: 0.22em;
+      text-transform: uppercase; color: var(--gold-lo);
+    }
+
+    /* Category pills */
+    #category-row {
+      display: flex; gap: 7px;
+      padding: 0 16px 10px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    #category-row::-webkit-scrollbar { display: none; }
+
+    .cpill {
+      flex-shrink: 0; padding: 7px 16px;
+      border-radius: var(--r-pill);
+      font-family: 'Jost', sans-serif;
+      font-size: 10px; font-weight: 400;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--ivory-dim);
+      border: 0.5px solid rgba(255,255,255,0.08);
+      cursor: pointer; transition: all 0.3s ease;
+      white-space: nowrap; background: transparent;
+    }
+    .cpill:hover { color: var(--ivory); border-color: var(--glass-rim2); }
+    .cpill.active {
+      background: linear-gradient(135deg, var(--gold-lo) 0%, var(--gold) 55%, var(--gold-hi) 100%);
+      color: var(--g0); border-color: transparent; font-weight: 500;
+      box-shadow: 0 3px 18px rgba(201,168,76,0.3);
+    }
+
+    /* Jewelry scroll */
+    #jewel-row {
+      display: flex; gap: 0;
+      overflow-x: auto; scrollbar-width: none;
+      padding: 4px 14px 12px;
+      -webkit-mask-image: linear-gradient(to right, transparent 0%, black 7%, black 93%, transparent 100%);
+    }
+    #jewel-row::-webkit-scrollbar { display: none; }
+
+    .jcard {
+      flex-shrink: 0; width: 90px;
+      display: flex; flex-direction: column; align-items: center; gap: 7px;
+      padding: 8px 6px; border-radius: var(--r-md);
+      cursor: pointer; position: relative;
+      transition: background 0.3s;
+    }
+    .jcard:hover { background: var(--glass); }
+    .jcard.sel { background: rgba(201,168,76,0.07); }
+    .jcard.sel::after {
+      content: ''; position: absolute; top: 7px; right: 8px;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--gold); box-shadow: 0 0 8px var(--gold);
+    }
+
+    .jring {
+      width: 70px; height: 70px; border-radius: 50%;
+      border: 0.5px solid rgba(255,255,255,0.08);
+      background: radial-gradient(circle at 32% 30%, rgba(255,255,255,0.06), rgba(0,0,0,0.3));
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.3s, box-shadow 0.3s;
+      overflow: hidden;
+    }
+    .jcard:hover .jring, .jcard.sel .jring {
+      border-color: var(--gold-lo);
+      box-shadow: 0 0 22px rgba(201,168,76,0.22), inset 0 0 10px rgba(201,168,76,0.05);
+    }
+    .jring img {
+      width: 54px; height: 54px; object-fit: contain;
+      animation: levitate 4s ease-in-out infinite;
+    }
+    .jcard:nth-child(2) .jring img { animation-delay: -0.8s; }
+    .jcard:nth-child(3) .jring img { animation-delay: -1.6s; }
+    .jcard:nth-child(4) .jring img { animation-delay: -2.4s; }
+    .jcard:nth-child(5) .jring img { animation-delay: -3.2s; }
+    .jcard:nth-child(6) .jring img { animation-delay: -0.4s; }
+
+    @keyframes levitate {
+      0%,100% { transform: translateY(0); }
+      50%      { transform: translateY(-7px); }
+    }
+
+    .jname {
+      font-size: 9px; letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(244,239,228,0.38);
+      text-align: center; line-height: 1.4;
+    }
+    .jcard.sel .jname { color: var(--gold-warm); }
+    .jprice {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 13px; font-weight: 300;
+      color: var(--gold); letter-spacing: 0.03em;
+    }
+
+    /* Action row */
+    #action-row {
+      display: flex; gap: 10px;
+      padding: 4px 16px 18px;
+    }
+
+    #try-btn {
+      flex: 1; height: 48px;
+      border: none; border-radius: var(--r-md);
+      background: linear-gradient(110deg, #7A621E 0%, #C9A84C 45%, #F0D98C 72%, #C9A84C 100%);
+      background-size: 200% 100%; background-position: 100% 0;
+      font-family: 'Cinzel', serif;
+      font-size: 11px; font-weight: 400;
+      letter-spacing: 0.3em; text-transform: uppercase;
+      color: var(--g0); cursor: pointer;
+      position: relative; overflow: hidden;
+      transition: background-position 0.5s ease, transform 0.15s;
+      box-shadow: 0 4px 28px rgba(201,168,76,0.25);
+    }
+    #try-btn:hover  { background-position: 0 0; }
+    #try-btn:active { transform: scale(0.97); }
+    #try-btn::before {
+      content: ''; position: absolute; top: -50%; left: -70%;
+      width: 50%; height: 200%;
+      background: linear-gradient(105deg, transparent, rgba(255,255,255,0.28), transparent);
+      transform: skewX(-18deg); transition: left 0.6s ease;
+    }
+    #try-btn:hover::before { left: 130%; }
+
+    .ico-btn {
+      width: 48px; height: 48px; border-radius: var(--r-md);
+      background: var(--glass);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0;
+      transition: background 0.25s, border-color 0.25s;
+      color: var(--gold);
+    }
+    .ico-btn.border-gold { border: 0.5px solid var(--glass-rim); }
+    .ico-btn.border-soft { border: 0.5px solid rgba(255,255,255,0.08); color: var(--ivory-dim); }
+    .ico-btn.border-gold:hover { background: rgba(201,168,76,0.1); border-color: var(--gold); }
+    .ico-btn.border-soft:hover { background: var(--glass); border-color: var(--glass-rim2); color: var(--ivory); }
+    .ico-btn:active { transform: scale(0.95); }
+
+    /* FLASH */
+    #flash {
+      position: fixed; inset: 0; z-index: 997;
+      background: #fff; opacity: 0; pointer-events: none;
+      transition: opacity 0.08s ease;
+    }
+
+    /* PREVIEW MODAL */
+    #modal-wrap {
+      display: none;
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,0.94);
+      backdrop-filter: blur(28px);
+      align-items: center; justify-content: center;
+      flex-direction: column; padding: 24px;
+    }
+    #modal-wrap.open { display: flex; animation: modalIn 0.42s cubic-bezier(0.22,1,0.36,1) both; }
+    @keyframes modalIn {
+      from { opacity:0; transform: scale(0.94) translateY(12px); }
+      to   { opacity:1; transform: scale(1) translateY(0); }
+    }
+
+    #modal-close {
+      position: absolute; top: 20px; right: 20px;
+      width: 38px; height: 38px; border-radius: 50%;
+      background: var(--glass); border: 0.5px solid var(--glass-rim2);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--ivory-dim);
+      font-size: 16px; transition: all 0.2s;
+    }
+    #modal-close:hover { background: rgba(201,168,76,0.12); color: var(--gold-hi); }
+
+    #modal-eyebrow {
+      font-family: 'Jost', sans-serif;
+      font-size: 9px; font-weight: 200;
+      letter-spacing: 0.45em; text-transform: uppercase;
+      color: var(--gold); margin-bottom: 16px;
+    }
+
+    #modal-frame {
+      position: relative; border-radius: var(--r-md);
+      overflow: hidden;
+      border: 0.5px solid var(--glass-rim);
+      box-shadow: 0 0 0 1px rgba(201,168,76,0.08), 0 40px 100px rgba(0,0,0,0.9);
       max-width: 100%;
     }
-    .preview-frame::before,
-    .preview-frame::after {
-      content: '';
-      position: absolute;
-      z-index: 2;
-      pointer-events: none;
-    }
-    /* Corner accents */
-    .corner {
-      position: absolute;
-      width: 18px; height: 18px;
-      border-color: var(--gold);
-      border-style: solid;
-      z-index: 3;
-    }
-    .corner.tl { top: 0; left: 0; border-width: 2px 0 0 2px; border-radius: 2px 0 0 0; }
-    .corner.tr { top: 0; right: 0; border-width: 2px 2px 0 0; border-radius: 0 2px 0 0; }
-    .corner.bl { bottom: 0; left: 0; border-width: 0 0 2px 2px; border-radius: 0 0 0 2px; }
-    .corner.br { bottom: 0; right: 0; border-width: 0 2px 2px 0; border-radius: 0 0 2px 0; }
 
-    #preview-image {
+    .fc { position: absolute; width: 20px; height: 20px; z-index: 3; pointer-events: none; }
+    .fc.tl { top: 0; left: 0; }
+    .fc.tr { top: 0; right: 0; }
+    .fc.bl { bottom: 0; left: 0; }
+    .fc.br { bottom: 0; right: 0; }
+
+    #preview-img {
       display: block;
-      max-width: 90vw;
-      max-height: 52vh;
-      border-radius: var(--radius);
+      max-width: 88vw; max-height: 50vh;
+      border-radius: var(--r-md);
     }
 
-    /* Action panel */
-    .preview-actions {
-      margin-top: 22px;
-      width: 100%;
-      max-width: 380px;
-    }
-
-    /* Status text */
-    #download-status {
-      font-size: 10px;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--gold);
-      text-align: center;
-      height: 18px;
-      margin-bottom: 12px;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-    #download-status.show { opacity: 1; }
-
-    /* Action buttons */
-    .action-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .btn-premium {
-      position: relative;
-      overflow: hidden;
-      padding: 16px 12px;
-      border: none;
-      border-radius: var(--radius);
-      font-family: var(--font-body);
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      cursor: pointer;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
-    }
-    .btn-premium:hover  { transform: translateY(-2px); }
-    .btn-premium:active { transform: translateY(0) scale(0.97); }
-
-    .btn-premium .btn-icon { font-size: 18px; }
-
-    /* Shimmer */
-    .btn-premium::after {
-      content: '';
-      position: absolute;
-      top: -50%; left: -60%;
-      width: 60%; height: 200%;
-      background: linear-gradient(105deg, transparent, rgba(255,255,255,0.22), transparent);
-      transform: skewX(-20deg);
-      transition: left 0.55s ease;
-    }
-    .btn-premium:hover::after { left: 120%; }
-
-    .btn-dl {
-      background: linear-gradient(135deg, var(--gold-light), var(--gold), var(--gold-dark));
-      color: #0a0a0a;
-      box-shadow: 0 4px 20px rgba(201,168,76,0.3);
-    }
-
-    .btn-wa {
-      background: linear-gradient(135deg, #2ecc71, #25D366, #1a9e4e);
-      color: #fff;
-      box-shadow: 0 4px 20px rgba(37,211,102,0.25);
-    }
-
-    /* ── Divider ── */
-    .modal-divider {
-      width: 100%;
-      max-width: 380px;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
-      margin: 18px 0;
-    }
-
-    /* ── Product info chip ── */
-    #product-chip {
-      display: flex;
-      align-items: center;
-      gap: 10px;
+    #product-strip {
+      width: 100%; max-width: 400px;
+      display: flex; align-items: center;
       background: var(--glass);
-      border: 1px solid var(--glass-border);
-      border-radius: 40px;
-      padding: 8px 18px;
-      margin-bottom: 0;
+      border: 0.5px solid var(--glass-rim2);
+      border-radius: var(--r-pill);
+      padding: 10px 18px; gap: 10px;
+      margin: 18px 0 14px;
     }
-    .chip-dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--gold);
-      animation: pulse 2s ease-in-out infinite;
+    .ps-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--gold); box-shadow: 0 0 8px var(--gold);
+      animation: pulse 2s ease-in-out infinite; flex-shrink: 0;
     }
-    @keyframes pulse {
-      0%,100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(0.8); }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.75)} }
+    .ps-label { font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ivory-dim); flex: 1; }
+    .ps-code { font-family: 'Cormorant Garamond', serif; font-size: 14px; font-weight: 300; color: var(--gold-warm); }
+
+    #dl-status {
+      font-size: 9px; letter-spacing: 0.25em; text-transform: uppercase;
+      color: var(--gold); text-align: center;
+      height: 16px; margin-bottom: 10px;
+      opacity: 0; transition: opacity 0.3s;
     }
-    .chip-text {
-      font-size: 10px;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--text-muted);
+    #dl-status.show { opacity: 1; }
+
+    #modal-actions {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 10px; width: 100%; max-width: 400px;
     }
-    .chip-code {
-      font-family: var(--font-display);
-      font-size: 13px;
-      color: var(--gold-light);
-      margin-left: 2px;
+
+    .maction {
+      position: relative; overflow: hidden;
+      height: 52px; border: none; border-radius: var(--r-md);
+      font-family: 'Cinzel', serif;
+      font-size: 9px; font-weight: 400;
+      letter-spacing: 0.25em; text-transform: uppercase;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: transform 0.18s, box-shadow 0.18s;
     }
+    .maction:hover  { transform: translateY(-2px); }
+    .maction:active { transform: scale(0.97); }
+    .maction::after {
+      content: ''; position: absolute; top: -50%; left: -65%;
+      width: 50%; height: 200%;
+      background: linear-gradient(105deg, transparent, rgba(255,255,255,0.2), transparent);
+      transform: skewX(-18deg); transition: left 0.55s ease;
+    }
+    .maction:hover::after { left: 125%; }
+
+    .maction-dl {
+      background: linear-gradient(135deg, #7A621E 0%, #C9A84C 50%, #F0D98C 100%);
+      color: var(--g0); box-shadow: 0 5px 24px rgba(201,168,76,0.28);
+    }
+    .maction-wa {
+      background: linear-gradient(135deg, #128C7E 0%, #25D366 55%, #6FE89A 100%);
+      color: #fff; box-shadow: 0 5px 24px rgba(37,211,102,0.22);
+    }
+    .maction svg { width: 16px; height: 16px; flex-shrink: 0; }
   </style>
 </head>
 <body>
 
-  <div id="flash-overlay"></div>
+  <div id="grain"></div>
+  <div id="flash"></div>
 
-  <!-- Camera feed -->
+  <!-- CAMERA -->
   <div id="video-container">
     <video id="webcam" autoplay playsinline muted></video>
     <canvas id="overlay"></canvas>
-    <video id="remote-video" autoplay playsinline></video>
+    <video id="remote-video" autoplay playsinline style="display:none;"></video>
   </div>
+  <div id="vignette"></div>
 
-  <!-- Brand Header -->
-  <header id="brand-header">
-    <div>
-      <div class="brand-name">Jewels<span>·AI</span></div>
-      <div class="brand-tagline">Virtual Try-On Experience</div>
+  <!-- SCAN LINE -->
+  <div id="scanline"></div>
+
+  <!-- AR CORNER BRACKETS -->
+  <div class="arc tl"><svg viewBox="0 0 36 36" fill="none"><path d="M2 18V2H18" stroke="#C9A84C" stroke-width="0.9" stroke-linecap="round"/></svg></div>
+  <div class="arc tr"><svg viewBox="0 0 36 36" fill="none"><path d="M2 18V2H18" stroke="#C9A84C" stroke-width="0.9" stroke-linecap="round"/></svg></div>
+  <div class="arc bl"><svg viewBox="0 0 36 36" fill="none"><path d="M2 18V2H18" stroke="#C9A84C" stroke-width="0.9" stroke-linecap="round"/></svg></div>
+  <div class="arc br"><svg viewBox="0 0 36 36" fill="none"><path d="M2 18V2H18" stroke="#C9A84C" stroke-width="0.9" stroke-linecap="round"/></svg></div>
+
+  <!-- GOLD RULES -->
+  <div class="gold-rule top"></div>
+  <div class="gold-rule bottom"></div>
+
+  <!-- HEADER -->
+  <header id="header">
+    <div class="wordmark">
+      <div class="wordmark-line1">JEWELS<em>·AI</em></div>
+      <div class="wordmark-line2">Atelier Virtuel</div>
     </div>
-    <div class="header-badge">AR Live</div>
+    <div class="header-right">
+      <div class="ar-badge"><div class="ar-dot"></div>AR Live</div>
+      <div class="hdr-btn" title="Wishlist">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      </div>
+      <div class="hdr-btn" title="Share">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </div>
+    </div>
   </header>
 
-  <!-- Decorative gold lines -->
-  <div class="gold-line top"></div>
-  <div class="gold-line bottom"></div>
+  <!-- AR SIDE PANEL -->
+  <div id="ar-panel">
+    <div class="ar-chip"><div class="ar-chip-label">Face</div><div class="ar-chip-value">Oval</div></div>
+    <div class="ar-chip"><div class="ar-chip-label">Tone</div><div class="ar-chip-value">Warm</div></div>
+    <div class="ar-chip"><div class="ar-chip-label">Match</div><div class="ar-chip-value">98%</div></div>
+  </div>
 
-  <!-- Capture Button -->
-  <button id="capture-trigger" onclick="runCaptureProcess()" title="Capture Look">
-    <svg viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-      <circle cx="12" cy="13" r="4"/>
-    </svg>
-  </button>
+  <!-- BOTTOM PANEL -->
+  <div id="bottom-panel">
+    <div id="shelf">
 
-  <!-- Jewelry options strip -->
-  <div id="jewelry-options"></div>
-
-  <!-- Category dock -->
-  <nav id="dock">
-    <div class="cat active" onclick="selectJewelryType('earrings', this)">Earrings</div>
-    <div class="cat" onclick="selectJewelryType('chains', this)">Chains</div>
-    <div class="cat" onclick="selectJewelryType('rings', this)">Rings</div>
-    <div class="cat" onclick="selectJewelryType('bangles', this)">Bangles</div>
-  </nav>
-
-  <!-- Preview Modal -->
-  <div id="preview-modal">
-    <div id="close-btn" onclick="closePreview()">✕</div>
-
-    <div class="modal-label">Your Look</div>
-
-    <div class="preview-frame">
-      <div class="corner tl"></div>
-      <div class="corner tr"></div>
-      <div class="corner bl"></div>
-      <div class="corner br"></div>
-      <img id="preview-image" src="" alt="Captured look">
-    </div>
-
-    <div class="modal-divider"></div>
-
-    <div id="product-chip">
-      <div class="chip-dot"></div>
-      <span class="chip-text">Product</span>
-      <span class="chip-code" id="chip-code-display">A001</span>
-    </div>
-
-    <div class="preview-actions">
-      <div id="download-status"></div>
-      <div class="action-row">
-        <button class="btn-premium btn-dl" id="dl-btn" onclick="executeDownload()">
-          <span class="btn-icon">↓</span>
-          Download
-        </button>
-        <button class="btn-premium btn-wa" id="wa-btn" onclick="shareToWA()">
-          <span class="btn-icon">↗</span>
-          WhatsApp
-        </button>
+      <div id="shelf-head">
+        <div id="shelf-title">Diamond Collection</div>
+        <div id="shelf-count">12 Pieces</div>
       </div>
+
+      <div id="category-row">
+        <div class="cpill active" onclick="switchCat('earrings', this)">Earrings</div>
+        <div class="cpill" onclick="switchCat('chains', this)">Chains</div>
+        <div class="cpill" onclick="switchCat('rings', this)">Rings</div>
+        <div class="cpill" onclick="switchCat('bangles', this)">Bangles</div>
+      </div>
+
+      <div id="jewel-row">
+        <div class="jcard sel" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/54x54/150F05/C9A84C?text=◆&font=serif" alt="Diamond Studs"></div>
+          <div class="jname">Diamond<br>Studs</div>
+          <div class="jprice">₹45,000</div>
+        </div>
+        <div class="jcard" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/54x54/150F05/E8D08A?text=❖&font=serif" alt="Gold Drops"></div>
+          <div class="jname">Gold<br>Drops</div>
+          <div class="jprice">₹62,000</div>
+        </div>
+        <div class="jcard" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/54x54/150F05/9A7F4A?text=○&font=serif" alt="Hoop Set"></div>
+          <div class="jname">Hoop<br>Set</div>
+          <div class="jprice">₹38,500</div>
+        </div>
+        <div class="jcard" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/54x54/150F05/C9A84C?text=✦&font=serif" alt="Chandbali"></div>
+          <div class="jname">Chandbali<br>Classic</div>
+          <div class="jprice">₹95,000</div>
+        </div>
+        <div class="jcard" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/54x54/150F05/E8D08A?text=✿&font=serif" alt="Gold Jhumka"></div>
+          <div class="jname">Gold<br>Jhumka</div>
+          <div class="jprice">₹72,000</div>
+        </div>
+        <div class="jcard" onclick="pickJewel(this)">
+          <div class="jring"><img src="https://placehold.co/54x54/150F05/9A7F4A?text=✶&font=serif" alt="Star Cluster"></div>
+          <div class="jname">Star<br>Cluster</div>
+          <div class="jprice">₹1,10,000</div>
+        </div>
+      </div>
+
+      <div id="action-row">
+        <button id="try-btn" onclick="runCapture()">Try On</button>
+        <div class="ico-btn border-gold" title="Capture Look" onclick="runCapture()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </div>
+        <div class="ico-btn border-soft" title="Save Look">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- PREVIEW MODAL -->
+  <div id="modal-wrap">
+    <div id="modal-close" onclick="closeModal()">✕</div>
+    <div id="modal-eyebrow">Your Look · Captured</div>
+
+    <div id="modal-frame">
+      <div class="fc tl">
+        <svg viewBox="0 0 20 20" fill="none" width="20" height="20">
+          <path d="M1 10V1H10" stroke="#C9A84C" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="fc tr" style="transform:scaleX(-1)">
+        <svg viewBox="0 0 20 20" fill="none" width="20" height="20">
+          <path d="M1 10V1H10" stroke="#C9A84C" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="fc bl" style="transform:scaleY(-1)">
+        <svg viewBox="0 0 20 20" fill="none" width="20" height="20">
+          <path d="M1 10V1H10" stroke="#C9A84C" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="fc br" style="transform:scale(-1,-1)">
+        <svg viewBox="0 0 20 20" fill="none" width="20" height="20">
+          <path d="M1 10V1H10" stroke="#C9A84C" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <img id="preview-img" src="" alt="Your look">
+    </div>
+
+    <div id="product-strip">
+      <div class="ps-dot"></div>
+      <span class="ps-label">Product Code</span>
+      <span class="ps-code" id="ps-code">A001</span>
+    </div>
+
+    <div id="dl-status"></div>
+
+    <div id="modal-actions">
+      <button class="maction maction-dl" id="dl-btn" onclick="doDownload()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </button>
+      <button class="maction maction-wa" id="wa-btn" onclick="doWhatsApp()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        WhatsApp
+      </button>
     </div>
   </div>
 
   <script src="core.js"></script>
 
   <script>
-    function getActiveProductInfo() {
-      const activeName = window.currentJewelry
-        ? window.currentJewelry.split('/').pop().split('.')[0]
-        : "A001";
-      return {
-        code: activeName,
-        desc: "Antique-finish luxury jewelry with hand-polished detail."
-      };
+    const CATS = {
+      earrings: { title: 'Diamond Collection', count: '12 Pieces' },
+      chains:   { title: 'Gold Chains',        count: '8 Pieces'  },
+      rings:    { title: 'Solitaire Rings',     count: '15 Pieces' },
+      bangles:  { title: 'Bangle Sets',         count: '6 Pieces'  },
+    };
+
+    function switchCat(type, el) {
+      document.querySelectorAll('.cpill').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+      const c = CATS[type] || {};
+      document.getElementById('shelf-title').textContent = c.title || '';
+      document.getElementById('shelf-count').textContent = c.count || '';
+      if (typeof selectJewelryType === 'function') selectJewelryType(type);
+      else if (typeof filterJewelry === 'function') filterJewelry(type);
     }
 
-    function runCaptureProcess() {
-      const flash = document.getElementById('flash-overlay');
+    function pickJewel(card) {
+      document.querySelectorAll('.jcard').forEach(c => c.classList.remove('sel'));
+      card.classList.add('sel');
+    }
+
+    function getCode() {
+      return window.currentJewelry
+        ? window.currentJewelry.split('/').pop().split('.')[0]
+        : 'A001';
+    }
+
+    function runCapture() {
+      const flash = document.getElementById('flash');
       flash.style.opacity = '1';
-      setTimeout(() => flash.style.opacity = '0', 180);
+      setTimeout(() => flash.style.opacity = '0', 140);
 
       const video   = document.getElementById('webcam');
       const overlay = document.getElementById('overlay');
-      const info    = getActiveProductInfo();
-
-      document.getElementById('chip-code-display').textContent = info.code;
+      const code    = getCode();
+      document.getElementById('ps-code').textContent = code;
 
       const c   = document.createElement('canvas');
+      c.width   = video.videoWidth  || 1280;
+      c.height  = video.videoHeight || 720;
       const ctx = c.getContext('2d');
-      c.width  = video.videoWidth  || 1280;
-      c.height = video.videoHeight || 720;
 
-      // Mirror the video
       ctx.save();
       ctx.scale(-1, 1);
       ctx.drawImage(video, -c.width, 0, c.width, c.height);
       ctx.restore();
-
-      // Overlay AR
       ctx.drawImage(overlay, 0, 0, c.width, c.height);
 
-      // Premium info bar
-      const barH = 140;
-      const grd  = ctx.createLinearGradient(0, c.height - barH, 0, c.height);
-      grd.addColorStop(0, 'rgba(0,0,0,0)');
-      grd.addColorStop(0.15, 'rgba(0,0,0,0.9)');
-      grd.addColorStop(1,    'rgba(0,0,0,0.97)');
+      const bh  = 148;
+      const grd = ctx.createLinearGradient(0, c.height - bh, 0, c.height);
+      grd.addColorStop(0,    'rgba(0,0,0,0)');
+      grd.addColorStop(0.12, 'rgba(5,4,2,0.92)');
+      grd.addColorStop(1,    'rgba(5,4,2,0.98)');
       ctx.fillStyle = grd;
-      ctx.fillRect(0, c.height - barH, c.width, barH);
+      ctx.fillRect(0, c.height - bh, c.width, bh);
 
-      // Gold accent line
-      ctx.strokeStyle = '#c9a84c';
-      ctx.lineWidth   = 1.5;
-      const ly = c.height - barH + 1;
-      ctx.beginPath();
-      ctx.moveTo(0, ly); ctx.lineTo(c.width, ly);
-      ctx.stroke();
+      const gy = c.height - bh + 1;
+      const gr = ctx.createLinearGradient(0, gy, c.width, gy);
+      gr.addColorStop(0,    'transparent');
+      gr.addColorStop(0.25, '#7A621E');
+      gr.addColorStop(0.5,  '#C9A84C');
+      gr.addColorStop(0.75, '#7A621E');
+      gr.addColorStop(1,    'transparent');
+      ctx.strokeStyle = gr; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(c.width, gy); ctx.stroke();
 
       const px = 36;
+      ctx.font      = 'italic 300 26px "Cormorant Garamond", serif';
+      ctx.fillStyle = '#C9A84C';
+      ctx.fillText('JEWELS·AI', px, c.height - bh + 42);
 
-      // Brand wordmark
-      ctx.font         = 'italic 300 22px "Cormorant Garamond", serif';
-      ctx.fillStyle    = '#c9a84c';
-      ctx.letterSpacing = '6px';
-      ctx.fillText('JEWELS·AI', px, c.height - barH + 38);
+      ctx.font      = '200 10px "Jost", sans-serif';
+      ctx.fillStyle = 'rgba(244,239,228,0.35)';
+      ctx.fillText('ATELIER VIRTUEL', px, c.height - bh + 60);
 
-      // Product code
-      ctx.font         = '500 13px "Montserrat", sans-serif';
-      ctx.fillStyle    = 'rgba(245,240,232,0.55)';
-      ctx.letterSpacing = '3px';
-      ctx.fillText('PRODUCT  ' + info.code.toUpperCase(), px, c.height - barH + 68);
+      ctx.font      = '400 12px "Jost", sans-serif';
+      ctx.fillStyle = 'rgba(244,239,228,0.52)';
+      ctx.fillText('PRODUCT  ' + code.toUpperCase(), px, c.height - bh + 88);
 
-      // Description
-      ctx.font         = '300 13px "Montserrat", sans-serif';
-      ctx.fillStyle    = 'rgba(245,240,232,0.38)';
-      ctx.letterSpacing = '1px';
-      ctx.fillText(info.desc, px, c.height - barH + 95);
+      ctx.font      = '300 11px "Jost", sans-serif';
+      ctx.fillStyle = 'rgba(244,239,228,0.28)';
+      ctx.fillText('Antique-finish luxury jewelry · Hand-polished detail', px, c.height - bh + 112);
 
-      // Bottom gold line
-      ctx.strokeStyle = 'rgba(201,168,76,0.35)';
-      ctx.lineWidth   = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, c.height - 2); ctx.lineTo(c.width, c.height - 2);
-      ctx.stroke();
-
-      document.getElementById('preview-image').src = c.toDataURL('image/png');
-
-      const modal = document.getElementById('preview-modal');
-      modal.style.display = 'flex';
-      modal.classList.add('visible');
-      document.getElementById('download-status').classList.remove('show');
-      document.getElementById('download-status').innerText = '';
+      document.getElementById('preview-img').src = c.toDataURL('image/png');
+      document.getElementById('dl-status').classList.remove('show');
+      document.getElementById('dl-status').textContent = '';
+      document.getElementById('modal-wrap').classList.add('open');
     }
 
-    function executeDownload() {
-      const status = document.getElementById('download-status');
-      const btn    = document.getElementById('dl-btn');
-      status.innerText = 'Preparing download…';
-      status.classList.add('show');
+    function doDownload() {
+      const st  = document.getElementById('dl-status');
+      const btn = document.getElementById('dl-btn');
+      st.textContent = 'Preparing…'; st.classList.add('show');
       btn.disabled = true;
-
       setTimeout(() => {
-        const link = document.createElement('a');
-        link.href  = document.getElementById('preview-image').src;
-        link.download = 'jewels-ai-look.png';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        status.innerText = 'Download complete ✓';
+        const a = document.createElement('a');
+        a.href = document.getElementById('preview-img').src;
+        a.download = 'jewels-ai-look.png';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        st.textContent = 'Saved ✓';
         btn.disabled = false;
-      }, 800);
+      }, 700);
     }
 
-    async function shareToWA() {
-      const status  = document.getElementById('download-status');
-      const dataURL = document.getElementById('preview-image').src;
-      const info    = getActiveProductInfo();
-
-      const res  = await fetch(dataURL);
-      const blob = await res.blob();
-      const file = new File([blob], 'jewels-look.png', { type: 'image/png' });
-
+    async function doWhatsApp() {
+      const dataURL = document.getElementById('preview-img').src;
+      const code    = document.getElementById('ps-code').textContent;
+      const blob    = await (await fetch(dataURL)).blob();
+      const file    = new File([blob], 'jewels-look.png', { type: 'image/png' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
-          await navigator.share({
-            files: [file],
-            title: 'Jewels AI Look',
-            text: `Hi! I'm interested in this piece from Jewels AI.\nCode: ${info.code}\nHere's my look! ✨`
-          });
-        } catch (e) {
-          console.error('Share failed', e);
-          fallbackTextShare(info);
-        }
-      } else {
-        alert("Direct image sharing isn't supported here. Opening WhatsApp chat…");
-        fallbackTextShare(info);
+          await navigator.share({ files: [file], title: 'Jewels AI Look',
+            text: `Hi! Interested in Code: ${code}. Here's my look ✨` });
+          return;
+        } catch(e) { console.warn(e); }
       }
-    }
-
-    function fallbackTextShare(info) {
-      const phone = "917019743880";
-      const text  = encodeURIComponent(`Hi! I'm interested in product Code: ${info.code}.\nSaved my screenshot to my phone. ✨`);
+      const phone = '917019743880';
+      const text  = encodeURIComponent(`Hi! Interested in product Code: ${code}. Saved screenshot to my phone ✨`);
       window.open(`https://api.whatsapp.com/send?phone=${phone}&text=${text}`, '_blank');
     }
 
-    function closePreview() {
-      const modal = document.getElementById('preview-modal');
-      modal.style.display = 'none';
-      modal.classList.remove('visible');
-      document.getElementById('download-status').classList.remove('show');
+    function closeModal() {
+      document.getElementById('modal-wrap').classList.remove('open');
     }
+
+    window.addEventListener('load', () => {
+      setTimeout(() => switchCat('earrings', document.querySelector('.cpill.active')), 600);
+    });
   </script>
 </body>
 </html>

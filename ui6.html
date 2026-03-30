@@ -3,212 +3,802 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>JEWELS-AI | Orbital HUD Fixed</title>
-  
+  <title>JEWELS · AI — Orbital Atelier</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600;700&family=Cormorant:ital,wght@0,300;0,400;1,300;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
   <style>
+    /* ═══════════════════════════════════════════════
+       DESIGN SYSTEM TOKENS
+    ═══════════════════════════════════════════════ */
     :root {
-      --hud-gold: #FFD700;
-      --hud-glow: rgba(255, 215, 0, 0.4);
-      --hud-glass: rgba(0, 0, 0, 0.5);
+      --amber:      #FFB800;
+      --amber-dim:  #C98B00;
+      --amber-pale: #FFE08A;
+      --amber-glow: rgba(255,184,0,0.18);
+      --amber-edge: rgba(255,184,0,0.5);
+      --void:       #020205;
+      --deep:       #07070F;
+      --panel:      #0C0C18;
+      --surface:    rgba(12,12,24,0.82);
+      --scan:       rgba(255,184,0,0.04);
+      --text:       #E8DDB8;
+      --muted:      rgba(232,221,184,0.38);
+      --ff-hud:     'Rajdhani', sans-serif;
+      --ff-disp:    'Cormorant', serif;
+      --ff-mono:    'Share Tech Mono', monospace;
     }
 
-    body, html {
-      margin: 0; padding: 0;
-      background: #000; color: white;
-      font-family: sans-serif;
-      overflow: hidden; height: 100vh;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%; overflow: hidden;
+      background: var(--void);
+      color: var(--text);
+      font-family: var(--ff-hud);
+      cursor: none;
     }
 
-    #video-container { position: fixed; inset: 0; z-index: 0; }
-    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    /* ── CUSTOM CURSOR ── */
+    #cur {
+      position: fixed; z-index: 9999; pointer-events: none;
+      width: 28px; height: 28px;
+      border: 1px solid var(--amber);
+      transform: translate(-50%,-50%) rotate(45deg);
+      transition: transform 0.15s ease, width 0.2s, height 0.2s;
+    }
+    #cur::before, #cur::after {
+      content: ''; position: absolute;
+      background: var(--amber);
+    }
+    #cur::before { width: 4px; height: 1px; top: 50%; left: -6px; transform: translateY(-50%); }
+    #cur::after  { width: 1px; height: 4px; left: 50%; top: -6px; transform: translateX(-50%); }
+
+    #cur-dot {
+      position: fixed; z-index: 9999; pointer-events: none;
+      width: 3px; height: 3px; background: var(--amber-pale);
+      transform: translate(-50%,-50%);
+    }
+
+    /* ── SCAN LINE OVERLAY ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 8500; pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent, transparent 2px,
+        var(--scan) 2px, var(--scan) 4px
+      );
+      animation: scanScroll 8s linear infinite;
+    }
+
+    @keyframes scanScroll {
+      from { background-position: 0 0; }
+      to   { background-position: 0 200px; }
+    }
+
+    /* ── GRAIN ── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 8600; pointer-events: none;
+      opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 200px;
+    }
+
+    /* ═══════════════════════════════════════════════
+       VIDEO STAGE
+    ═══════════════════════════════════════════════ */
+    #stage { position: fixed; inset: 0; z-index: 0; background: #000; }
+    video, canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%; object-fit: cover;
+    }
     #webcam { transform: scaleX(-1); }
 
-    /* HUD CATEGORY ARC (Left Side) */
+    /* Deep vignette */
+    #stage::after {
+      content: ''; position: absolute; inset: 0; z-index: 5; pointer-events: none;
+      background:
+        radial-gradient(ellipse 75% 75% at 50% 45%, transparent 28%, rgba(2,2,5,0.78) 100%),
+        linear-gradient(to right, rgba(2,2,5,0.6) 0%, transparent 20%, transparent 80%, rgba(2,2,5,0.6) 100%),
+        linear-gradient(to bottom, rgba(2,2,5,0.5) 0%, transparent 15%);
+    }
+
+    /* ═══════════════════════════════════════════════
+       TOP HUD BAR
+    ═══════════════════════════════════════════════ */
+    #hud-top {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 300;
+      height: 52px;
+      display: flex; align-items: center;
+      padding: 0 24px;
+      background: linear-gradient(180deg, rgba(2,2,5,0.95) 0%, transparent 100%);
+      animation: revealDown 0.9s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    /* Corner bracket left */
+    #hud-top::before {
+      content: ''; position: absolute;
+      left: 18px; top: 10px;
+      width: 12px; height: 12px;
+      border-top: 1px solid var(--amber);
+      border-left: 1px solid var(--amber);
+    }
+    /* Corner bracket right */
+    #hud-top::after {
+      content: ''; position: absolute;
+      right: 18px; top: 10px;
+      width: 12px; height: 12px;
+      border-top: 1px solid var(--amber);
+      border-right: 1px solid var(--amber);
+    }
+
+    #brand {
+      display: flex; align-items: baseline; gap: 10px;
+    }
+
+    #brand-name {
+      font-family: var(--ff-hud);
+      font-size: 20px; font-weight: 700;
+      letter-spacing: 0.35em; text-transform: uppercase;
+      background: linear-gradient(90deg, var(--amber-pale) 0%, var(--amber) 60%, var(--amber-dim) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+
+    #brand-sep {
+      width: 1px; height: 18px;
+      background: var(--amber-edge); margin: 0 6px;
+    }
+
+    #brand-sub {
+      font-family: var(--ff-mono);
+      font-size: 9px; color: var(--muted);
+      letter-spacing: 0.3em; text-transform: uppercase;
+    }
+
+    #hud-center {
+      flex: 1; margin: 0 20px;
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    .hud-line {
+      flex: 1; height: 1px;
+      background: linear-gradient(to right, transparent, var(--amber-edge), transparent);
+    }
+
+    #hud-status {
+      font-family: var(--ff-mono);
+      font-size: 8px; letter-spacing: 0.3em;
+      color: var(--muted); white-space: nowrap;
+    }
+
+    #sys-dot {
+      display: inline-block;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--amber); box-shadow: 0 0 6px var(--amber);
+      margin-right: 6px; vertical-align: middle;
+      animation: sysBlink 1.8s ease-in-out infinite;
+    }
+
+    @keyframes sysBlink {
+      0%,100% { opacity:1; } 50% { opacity:0.3; }
+    }
+
+    #hud-coords {
+      font-family: var(--ff-mono); font-size: 8px;
+      color: var(--muted); letter-spacing: 0.15em;
+    }
+
+    /* ═══════════════════════════════════════════════
+       LEFT HUD BLADE NAVIGATION
+    ═══════════════════════════════════════════════ */
     #dock {
-      position: fixed; left: -20px; top: 50%;
+      position: fixed; left: 0; top: 50%;
       transform: translateY(-50%);
+      z-index: 300;
       display: flex; flex-direction: column;
-      gap: 20px; z-index: 100;
-      padding-left: 40px;
+      gap: 6px;
+      animation: revealRight 1s cubic-bezier(0.16,1,0.3,1) 0.15s both;
     }
 
     .cat {
-      width: 100px; height: 35px;
-      background: var(--hud-glass);
-      backdrop-filter: blur(10px);
-      border-left: 4px solid var(--hud-gold);
-      display: flex; align-items: center; padding-left: 15px;
-      cursor: pointer; font-size: 10px; font-weight: 800;
-      text-transform: uppercase; letter-spacing: 2px;
-      transition: 0.4s ease;
-      clip-path: polygon(0% 0%, 90% 0%, 100% 50%, 90% 100%, 0% 100%);
+      position: relative;
+      height: 40px; width: 118px;
+      display: flex; align-items: center;
+      padding-left: 20px;
+      background: rgba(7,7,15,0.8);
+      backdrop-filter: blur(20px);
+      /* HUD blade clip */
+      clip-path: polygon(0 0, 88% 0, 100% 50%, 88% 100%, 0 100%);
+      border-top: 1px solid rgba(255,184,0,0.12);
+      border-bottom: 1px solid rgba(255,184,0,0.08);
+      border-left: 2px solid var(--amber-dim);
+      cursor: none;
+      transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1);
+      overflow: hidden;
+    }
+
+    /* scan sheen */
+    .cat::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, rgba(255,184,0,0.06) 0%, transparent 100%);
+      pointer-events: none;
+    }
+
+    /* active amber fill */
+    .cat::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, var(--amber) 0%, var(--amber-dim) 100%);
+      clip-path: inherit;
+      opacity: 0; transition: opacity 0.35s;
+    }
+
+    .cat span {
+      font-family: var(--ff-hud);
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.3em; text-transform: uppercase;
+      color: var(--muted);
+      transition: color 0.3s;
+      position: relative; z-index: 1;
+    }
+
+    /* index number */
+    .cat-num {
+      position: absolute; right: 16px; top: 50%;
+      transform: translateY(-50%);
+      font-family: var(--ff-mono); font-size: 8px;
+      color: rgba(255,184,0,0.3); z-index: 1;
     }
 
     .cat.active {
-      width: 130px; background: var(--hud-gold); color: #000;
-      box-shadow: 0 0 20px var(--hud-glow); border-left: 6px solid #fff;
+      width: 138px;
+      border-left-color: var(--amber-pale);
+      box-shadow: 4px 0 30px rgba(255,184,0,0.2), inset 2px 0 12px rgba(255,184,0,0.06);
+    }
+    .cat.active::after { opacity: 1; }
+    .cat.active span { color: var(--void); font-weight: 700; }
+    .cat.active .cat-num { color: rgba(2,2,5,0.5); }
+
+    .cat:hover:not(.active) {
+      width: 124px;
+      border-left-color: var(--amber);
+    }
+    .cat:hover:not(.active) span { color: var(--amber); }
+
+    /* ── CAPTURE ── */
+    #snap-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-top: 12px; padding-left: 8px;
     }
 
-    /* CAPTURE BUTTON (Orbital) */
-    .snap-btn {
-      width: 50px; height: 50px; border-radius: 50%; background: white;
-      border: 2px solid var(--hud-gold); color: black; font-size: 20px;
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
-      margin-left: 20px; transition: 0.3s;
+    #snap-btn {
+      position: relative;
+      width: 52px; height: 52px;
+      border-radius: 50%; border: none; cursor: none;
+      background: transparent;
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
     }
 
-    #jewelry-options {
-      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
-      width: 90%; max-width: 800px; height: 120px; display: flex;
-      align-items: center; overflow-x: auto; gap: 20px; padding: 10px 40px;
-      z-index: 90; scrollbar-width: none;
-      background: radial-gradient(ellipse at bottom, rgba(255,215,0,0.15) 0%, transparent 70%);
+    /* spinning outer ring */
+    #snap-btn::before {
+      content: '';
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      border: 1.5px solid transparent;
+      border-top-color: var(--amber);
+      border-right-color: var(--amber-dim);
+      animation: spinRing 3s linear infinite;
     }
-    #jewelry-options::-webkit-scrollbar { display: none; }
-
-    #jewelry-options img, .thumb-btn {
-      min-width: 85px !important; max-width: 85px !important; height: 85px !important;
-      border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 50%;
-      background: rgba(0, 0, 0, 0.6); padding: 10px; object-fit: contain;
-      cursor: pointer; transition: 0.3s;
+    /* inner ring */
+    #snap-btn::after {
+      content: '';
+      position: absolute; inset: 5px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,184,0,0.25);
     }
 
-    /* PREVIEW MODAL */
+    @keyframes spinRing {
+      to { transform: rotate(360deg); }
+    }
+
+    #snap-core {
+      position: absolute; inset: 9px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--amber-pale) 0%, var(--amber) 60%, var(--amber-dim) 100%);
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+
+    #snap-btn:hover { transform: scale(1.12); }
+    #snap-btn:hover #snap-core { box-shadow: 0 0 20px rgba(255,184,0,0.6); }
+    #snap-btn:active { transform: scale(0.9); }
+
+    #snap-label {
+      font-family: var(--ff-mono); font-size: 8px;
+      letter-spacing: 0.3em; text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ═══════════════════════════════════════════════
+       BOTTOM ORBITAL CAROUSEL
+    ═══════════════════════════════════════════════ */
+    #orbital-wrap {
+      position: fixed; bottom: 0; left: 140px; right: 0;
+      z-index: 300; padding: 0 24px 22px;
+      animation: revealUp 1.1s cubic-bezier(0.16,1,0.3,1) 0.2s both;
+    }
+
+    #orbital-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 10px; padding: 0 4px;
+    }
+
+    #orbital-label {
+      font-family: var(--ff-mono);
+      font-size: 8px; letter-spacing: 0.45em;
+      text-transform: uppercase; color: var(--muted);
+    }
+
+    #orbital-rule {
+      flex: 1; height: 1px;
+      background: linear-gradient(to right, var(--amber-edge), transparent);
+    }
+
+    #orbital-count {
+      font-family: var(--ff-mono); font-size: 8px;
+      color: var(--muted); letter-spacing: 0.2em;
+    }
+
+    #orbital-tray {
+      display: flex; align-items: center; gap: 18px;
+      overflow-x: auto; overflow-y: hidden;
+      padding: 18px 22px;
+      background:
+        radial-gradient(ellipse 80% 100% at 50% 100%, rgba(255,184,0,0.07) 0%, transparent 70%),
+        linear-gradient(135deg, rgba(12,12,24,0.9) 0%, rgba(7,7,15,0.88) 100%);
+      border: 1px solid rgba(255,184,0,0.14);
+      border-radius: 22px;
+      backdrop-filter: blur(40px);
+      scrollbar-width: none;
+      -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+    }
+    #orbital-tray::-webkit-scrollbar { display: none; }
+
+    /* CIRCULAR ORBITAL PODS */
+    .orb {
+      flex-shrink: 0;
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(255,184,0,0.06), rgba(7,7,15,0.9));
+      border: 1px solid rgba(255,184,0,0.18);
+      display: flex; align-items: center; justify-content: center;
+      cursor: none;
+      position: relative;
+      transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1);
+      overflow: visible;
+    }
+
+    .orb img {
+      width: 62px; height: 62px;
+      object-fit: contain; border-radius: 50%;
+      padding: 4px;
+    }
+
+    /* Orbit ring on hover */
+    .orb::before {
+      content: '';
+      position: absolute; inset: -6px;
+      border-radius: 50%;
+      border: 1px solid transparent;
+      border-top-color: var(--amber);
+      border-right-color: var(--amber-dim);
+      opacity: 0;
+      transition: opacity 0.3s;
+      animation: spinRing 2s linear infinite;
+    }
+
+    .orb:hover {
+      transform: translateY(-10px) scale(1.08);
+      border-color: var(--amber);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.6), 0 0 24px rgba(255,184,0,0.2);
+    }
+    .orb:hover::before { opacity: 1; }
+
+    .orb.active {
+      border-color: var(--amber-pale);
+      box-shadow: 0 0 0 2px var(--amber), 0 10px 30px rgba(255,184,0,0.3);
+      transform: translateY(-6px);
+    }
+
+    .orb.active::after {
+      content: '◆';
+      position: absolute; bottom: -18px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 7px; color: var(--amber);
+    }
+
+    /* Skeleton */
+    .orb-skeleton {
+      animation: orbPulse 1.6s ease-in-out infinite;
+    }
+    @keyframes orbPulse {
+      0%,100% { border-color: rgba(255,184,0,0.08); }
+      50% { border-color: rgba(255,184,0,0.22); }
+    }
+
+    /* ═══════════════════════════════════════════════
+       FLASH
+    ═══════════════════════════════════════════════ */
+    #flash {
+      position: fixed; inset: 0; z-index: 8000;
+      background: #fff; opacity: 0; pointer-events: none;
+    }
+
+    /* ═══════════════════════════════════════════════
+       PREVIEW MODAL
+    ═══════════════════════════════════════════════ */
     #preview-modal {
-      display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,0.98); z-index: 1000;
+      display: none; position: fixed; inset: 0; z-index: 7000;
+      background: rgba(2,2,5,0.97);
       flex-direction: column; align-items: center; justify-content: center;
-      padding: 20px;
+      padding: 28px; backdrop-filter: blur(50px);
     }
-    .preview-box { width: 100%; max-width: 500px; text-align: center; position: relative; }
-    #preview-image { width: 100%; border-radius: 12px; border: 2px solid var(--hud-gold); margin-bottom: 20px; }
-    
-    .preview-actions { display: flex; gap: 15px; width: 100%; }
-    .action-btn { flex: 1; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; text-transform: uppercase; }
-    .dl-btn { background: var(--hud-gold); color: black; }
-    .wa-btn { background: #25D366; color: white; }
-    .close-preview { position: absolute; top: -50px; right: 0; color: white; font-size: 40px; cursor: pointer; }
+    #preview-modal.open { display: flex; animation: fadeModal 0.4s ease; }
 
-    #flash-overlay { position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 999; }
+    @keyframes fadeModal { from { opacity:0; } to { opacity:1; } }
+
+    /* HUD corner brackets on modal */
+    #preview-modal::before {
+      content: '';
+      position: absolute; top: 20px; left: 20px;
+      width: 20px; height: 20px;
+      border-top: 1px solid var(--amber); border-left: 1px solid var(--amber);
+    }
+    #preview-modal::after {
+      content: '';
+      position: absolute; bottom: 20px; right: 20px;
+      width: 20px; height: 20px;
+      border-bottom: 1px solid var(--amber); border-right: 1px solid var(--amber);
+    }
+
+    #modal-head {
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .m-rule { height: 1px; width: 60px; background: var(--amber-edge); }
+
+    #modal-title {
+      font-family: var(--ff-disp);
+      font-size: 14px; font-style: italic;
+      letter-spacing: 0.3em; color: var(--muted);
+    }
+
+    #preview-frame {
+      position: relative;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--amber-edge);
+      box-shadow: 0 0 60px rgba(255,184,0,0.06), 0 40px 80px rgba(0,0,0,0.8);
+      max-width: 88vw; max-height: 56vh;
+    }
+
+    /* HUD frame corners */
+    #preview-frame::before {
+      content: '';
+      position: absolute; top: 8px; left: 8px;
+      width: 18px; height: 18px;
+      border-top: 1.5px solid var(--amber-pale); border-left: 1.5px solid var(--amber-pale);
+      z-index: 2;
+    }
+    #preview-frame::after {
+      content: '';
+      position: absolute; bottom: 8px; right: 8px;
+      width: 18px; height: 18px;
+      border-bottom: 1.5px solid var(--amber-pale); border-right: 1.5px solid var(--amber-pale);
+      z-index: 2;
+    }
+
+    #preview-image { display: block; max-width: 100%; max-height: 56vh; }
+
+    #preview-meta {
+      margin-top: 12px;
+      font-family: var(--ff-mono); font-size: 9px;
+      letter-spacing: 0.3em; color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    #preview-item {
+      font-family: var(--ff-disp); font-size: 16px;
+      font-style: italic; color: var(--amber);
+      margin-top: 2px;
+    }
+
+    #preview-actions { margin-top: 20px; display: flex; gap: 12px; }
+
+    .p-btn {
+      padding: 11px 28px;
+      font-family: var(--ff-hud); font-size: 10px; font-weight: 700;
+      letter-spacing: 0.35em; text-transform: uppercase;
+      border: none; cursor: none;
+      clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    }
+
+    .p-btn:hover { transform: translateY(-2px) scale(1.04); }
+
+    .p-btn-amber {
+      background: linear-gradient(135deg, var(--amber-pale) 0%, var(--amber) 100%);
+      color: var(--void);
+      box-shadow: 0 0 24px rgba(255,184,0,0.3);
+    }
+
+    .p-btn-wa {
+      background: transparent;
+      border: 1px solid rgba(37,211,102,0.4);
+      color: #7ef5a8;
+      clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+    }
+    .p-btn-wa:hover { background: rgba(37,211,102,0.1); }
+
+    #close-btn {
+      position: absolute; top: 20px; right: 24px;
+      width: 34px; height: 34px;
+      background: transparent; border: none; cursor: none;
+      color: var(--muted); font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      clip-path: polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%);
+      border: 1px solid var(--amber-edge);
+      transition: all 0.3s;
+    }
+    #close-btn:hover {
+      background: rgba(255,184,0,0.1);
+      border-color: var(--amber);
+      color: var(--amber);
+    }
+
+    /* ═══════════════════════════════════════════════
+       ANIMATIONS
+    ═══════════════════════════════════════════════ */
+    @keyframes revealDown  { from { opacity:0; transform:translateY(-16px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes revealRight { from { opacity:0; transform:translate(-24px,-50%); } to { opacity:1; transform:translate(0,-50%); } }
+    @keyframes revealUp    { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+
+    @media (max-width: 480px) {
+      #orbital-wrap { left: 120px; padding: 0 10px 18px; }
+      .orb { width: 66px; height: 66px; }
+      .orb img { width: 50px; height: 50px; }
+      .cat { width: 100px; height: 36px; }
+    }
   </style>
 </head>
 <body>
 
-  <div id="app">
-    <div id="flash-overlay"></div>
+  <div id="cur"></div>
+  <div id="cur-dot"></div>
+  <div id="flash"></div>
 
-    <div id="video-container">
-      <video id="webcam" autoplay playsinline muted></video>
-      <canvas id="overlay"></canvas>
-      <video id="remote-video" autoplay playsinline></video>
+  <!-- VIDEO STAGE -->
+  <div id="stage">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <video id="remote-video" autoplay playsinline></video>
+  </div>
+
+  <!-- TOP HUD -->
+  <div id="hud-top">
+    <div id="brand">
+      <div id="brand-name">Jewels · AI</div>
+      <div id="brand-sep"></div>
+      <div id="brand-sub">Orbital Atelier</div>
+    </div>
+    <div id="hud-center">
+      <div class="hud-line"></div>
+      <div id="hud-status"><span id="sys-dot"></span>SYS.READY</div>
+      <div class="hud-line"></div>
+    </div>
+    <div id="hud-coords" id="coords">AR.LIVE · 00°N 00°E</div>
+  </div>
+
+  <!-- LEFT BLADE DOCK -->
+  <nav id="dock">
+    <div class="cat active" data-type="earrings" onclick="handleHUDClick('earrings',this)">
+      <span>Earrings</span><div class="cat-num">01</div>
+    </div>
+    <div class="cat" data-type="chains" onclick="handleHUDClick('chains',this)">
+      <span>Chains</span><div class="cat-num">02</div>
+    </div>
+    <div class="cat" data-type="rings" onclick="handleHUDClick('rings',this)">
+      <span>Rings</span><div class="cat-num">03</div>
+    </div>
+    <div class="cat" data-type="bangles" onclick="handleHUDClick('bangles',this)">
+      <span>Bangles</span><div class="cat-num">04</div>
     </div>
 
-    <div id="dock">
-      <div class="cat active" onclick="handleHUDClick('earrings', this)">Earrings</div>
-      <div class="cat" onclick="handleHUDClick('chains', this)">Chains</div>
-      <div class="cat" onclick="handleHUDClick('rings', this)">Rings</div>
-      <div class="cat" onclick="handleHUDClick('bangles', this)">Bangles</div>
-      <button class="snap-btn" onclick="captureHUDSnapshot()">📸</button>
-    </div>
-
-    <div id="jewelry-options"></div>
-
-    <div id="preview-modal">
-        <div class="preview-box">
-            <span class="close-preview" onclick="closePreview()">&times;</span>
-            <img id="preview-image" src="">
-            <div class="preview-actions">
-                <button class="action-btn dl-btn" onclick="downloadBakedImage()">📥 Download</button>
-                <button class="action-btn wa-btn" onclick="shareToWhatsApp()">🟢 WhatsApp</button>
-            </div>
+    <div id="snap-row">
+      <div id="snap-btn" onclick="captureHUDSnapshot()">
+        <div id="snap-core">
+          <!-- CSS camera icon -->
+          <svg width="18" height="16" viewBox="0 0 18 16" fill="none">
+            <rect x="1" y="3" width="16" height="12" rx="2" stroke="#020205" stroke-width="1.5"/>
+            <circle cx="9" cy="9" r="3" stroke="#020205" stroke-width="1.5"/>
+            <path d="M6 3L7 1h4l1 2" stroke="#020205" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
         </div>
+      </div>
+      <div id="snap-label">Capture</div>
+    </div>
+  </nav>
+
+  <!-- ORBITAL CAROUSEL -->
+  <div id="orbital-wrap">
+    <div id="orbital-header">
+      <div id="orbital-label">Collection Feed</div>
+      <div id="orbital-rule"></div>
+      <div id="orbital-count">— Initialising</div>
+    </div>
+    <div id="orbital-tray"></div>
+  </div>
+
+  <!-- PREVIEW MODAL -->
+  <div id="preview-modal">
+    <button id="close-btn" onclick="closePreview()">✕</button>
+    <div id="modal-head">
+      <div class="m-rule"></div>
+      <div id="modal-title">Your Signature Look</div>
+      <div class="m-rule"></div>
+    </div>
+    <div id="preview-frame">
+      <img id="preview-image" src="" alt="Your Look">
+    </div>
+    <div id="preview-meta">Jewels AI · Orbital Atelier</div>
+    <div id="preview-item">Curated Selection</div>
+    <div id="preview-actions">
+      <button class="p-btn p-btn-amber" onclick="downloadBakedImage()">↓ &nbsp;Download</button>
+      <button class="p-btn p-btn-wa"    onclick="shareToWhatsApp()">WhatsApp</button>
     </div>
   </div>
 
   <script src="core.js"></script>
-
   <script>
-    function handleHUDClick(type, element) {
-        document.querySelectorAll('.cat').forEach(nav => nav.classList.remove('active'));
-        element.classList.add('active');
-        if (typeof selectJewelryType === "function") selectJewelryType(type);
+    /* ── CURSOR ── */
+    const cur = document.getElementById('cur');
+    const dot = document.getElementById('cur-dot');
+    document.addEventListener('mousemove', e => {
+      cur.style.left = e.clientX+'px'; cur.style.top = e.clientY+'px';
+      dot.style.left = e.clientX+'px'; dot.style.top  = e.clientY+'px';
+    });
+    document.querySelectorAll('.cat,[onclick],button,.orb').forEach(el => {
+      el.addEventListener('mouseenter', () => { cur.style.width='38px'; cur.style.height='38px'; });
+      el.addEventListener('mouseleave', () => { cur.style.width='28px'; cur.style.height='28px'; });
+    });
+
+    /* ── LIVE COORD TICKER ── */
+    let lat=0, lng=0;
+    setInterval(()=>{
+      lat+=(Math.random()-0.5)*0.002; lng+=(Math.random()-0.5)*0.002;
+      const el=document.getElementById('hud-coords');
+      if(el) el.textContent=`AR.LIVE · ${Math.abs(lat).toFixed(4)}°${lat>=0?'N':'S'} ${Math.abs(lng).toFixed(4)}°${lng>=0?'E':'W'}`;
+    },1200);
+
+    /* ── SKELETONS ── */
+    function renderSkeletons(n=7){
+      const t=document.getElementById('orbital-tray'); t.innerHTML='';
+      document.getElementById('orbital-count').textContent='— Initialising';
+      for(let i=0;i<n;i++){
+        const o=document.createElement('div'); o.className='orb orb-skeleton';
+        t.appendChild(o);
+      }
     }
 
-    function captureHUDSnapshot() {
-        // Flash Effect
-        const flash = document.getElementById('flash-overlay');
-        flash.style.opacity = '1';
-        setTimeout(() => flash.style.opacity = '0', 150);
+    window.populateCarousel = function(items){
+      const t=document.getElementById('orbital-tray'); t.innerHTML='';
+      document.getElementById('orbital-count').textContent=`— ${items.length} pieces`;
+      items.forEach(item=>{
+        const orb=document.createElement('div'); orb.className='orb';
+        const img=document.createElement('img'); img.src=item.src; img.alt=item.label||'';
+        orb.appendChild(img);
+        orb.onclick=()=>{
+          document.querySelectorAll('.orb').forEach(o=>o.classList.remove('active'));
+          orb.classList.add('active');
+          window.currentJewelry=item.src;
+          document.getElementById('preview-item').textContent=
+            (item.label||item.src.split('/').pop().split('.')[0]).replace(/_/g,' ');
+          if(typeof selectJewelry==='function') selectJewelry(item.src);
+        };
+        t.appendChild(orb);
+      });
+    };
 
-        const video = document.getElementById('webcam');
-        const arLayer = document.getElementById('overlay');
-        
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
+    renderSkeletons();
 
-        // 1. Draw Mirrored Camera
-        ctx.save();
-        ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        ctx.restore();
-
-        // 2. Draw Jewelry
-        ctx.drawImage(arLayer, 0, 0, canvas.width, canvas.height);
-
-        // 3. Bake Description Box
-        const fileName = window.currentJewelry ? window.currentJewelry.split('/').pop().split('.')[0] : "Product_Selection";
-        const boxH = 120;
-        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
-        ctx.fillRect(0, canvas.height - boxH, canvas.width, boxH);
-        ctx.strokeStyle = "#FFD700"; ctx.lineWidth = 4;
-        ctx.strokeRect(0, canvas.height - boxH, canvas.width, boxH);
-
-        ctx.fillStyle = "#FFD700"; ctx.font = "bold 30px Arial";
-        ctx.fillText("Product Description", 30, canvas.height - 70);
-        ctx.fillStyle = "white"; ctx.font = "24px Arial";
-        ctx.fillText("Code: " + fileName, 30, canvas.height - 30);
-
-        document.getElementById('preview-image').src = canvas.toDataURL("image/png");
-        document.getElementById('preview-modal').style.display = 'flex';
+    /* ── CATEGORY ── */
+    function handleHUDClick(type, el){
+      document.querySelectorAll('.cat').forEach(c=>c.classList.remove('active'));
+      el.classList.add('active');
+      renderSkeletons();
+      document.getElementById('hud-status').innerHTML='<span id="sys-dot" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber);margin-right:6px;vertical-align:middle;animation:sysBlink 1.8s ease-in-out infinite;"></span>LOADING.'+type.toUpperCase();
+      if(typeof selectJewelryType==='function') selectJewelryType(type, el);
     }
 
-    function closePreview() { document.getElementById('preview-modal').style.display = 'none'; }
+    /* ── CAPTURE ── */
+    function captureHUDSnapshot(){
+      const fl=document.getElementById('flash');
+      fl.style.transition='none'; fl.style.opacity='1';
+      requestAnimationFrame(()=>{ fl.style.transition='opacity 0.16s'; fl.style.opacity='0'; });
 
-    function downloadBakedImage() {
-        const link = document.createElement('a');
-        link.download = "Jewels_AI_Snapshot.png";
-        link.href = document.getElementById('preview-image').src;
-        link.click();
+      const video=document.getElementById('webcam');
+      const arL=document.getElementById('overlay');
+      const cvs=document.createElement('canvas');
+      const ctx=cvs.getContext('2d');
+      cvs.width=video.videoWidth||1280; cvs.height=video.videoHeight||720;
+
+      ctx.save(); ctx.translate(cvs.width,0); ctx.scale(-1,1);
+      ctx.drawImage(video,0,0,cvs.width,cvs.height); ctx.restore();
+      ctx.drawImage(arL,0,0,cvs.width,cvs.height);
+
+      // HUD-style branding band
+      const bH=100, y0=cvs.height-bH;
+      ctx.fillStyle='rgba(2,2,5,0.92)'; ctx.fillRect(0,y0,cvs.width,bH);
+      // amber rule
+      ctx.strokeStyle='rgba(255,184,0,0.6)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(0,y0+0.5); ctx.lineTo(cvs.width,y0+0.5); ctx.stroke();
+
+      // brand
+      ctx.font='700 20px Rajdhani,sans-serif'; ctx.fillStyle='#FFB800';
+      ctx.letterSpacing='6px'; ctx.fillText('JEWELS · AI',28,y0+34);
+      ctx.font='300 9px monospace'; ctx.fillStyle='rgba(232,221,184,0.4)';
+      ctx.letterSpacing='4px'; ctx.fillText('ORBITAL ATELIER',29,y0+52);
+
+      // item
+      const item=window.currentJewelry
+        ? window.currentJewelry.split('/').pop().split('.')[0].replace(/_/g,' ')
+        : 'Curated Selection';
+      ctx.font='300 12px monospace'; ctx.fillStyle='rgba(232,221,184,0.7)';
+      ctx.letterSpacing='2px'; ctx.fillText('ITEM  '+item.toUpperCase(),28,y0+80);
+
+      // corner brackets
+      ctx.strokeStyle='rgba(255,184,0,0.5)'; ctx.lineWidth=1.5;
+      [[28,y0+6,14,14],[cvs.width-28,y0+6,-14,14]].forEach(([x,y,dx,dy])=>{
+        ctx.beginPath(); ctx.moveTo(x,y+dy); ctx.lineTo(x,y); ctx.lineTo(x+dx,y); ctx.stroke();
+      });
+
+      document.getElementById('preview-image').src=cvs.toDataURL('image/png');
+      document.getElementById('preview-modal').classList.add('open');
     }
 
-    async function shareToWhatsApp() {
-        const dataUrl = document.getElementById('preview-image').src;
-        const blob = await (await fetch(dataUrl)).blob();
-        const file = new File([blob], 'my_look.png', { type: 'image/png' });
+    function closePreview(){ document.getElementById('preview-modal').classList.remove('open'); }
 
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-                files: [file],
-                title: 'Jewels AI',
-                text: 'Check out my jewelry look! ✨'
-            });
-        } else {
-            window.open(`https://wa.me/919743600311?text=${encodeURIComponent("I'm interested in this piece from Jewels AI!")}`, '_blank');
-        }
+    function downloadBakedImage(){
+      const a=document.createElement('a'); a.download='JewelsAI_Orbital.png';
+      a.href=document.getElementById('preview-image').src; a.click();
     }
 
-    window.addEventListener('load', () => {
-        setTimeout(() => {
-            const activeBtn = document.querySelector('.cat.active');
-            if (activeBtn) handleHUDClick('earrings', activeBtn);
-        }, 1200);
+    async function shareToWhatsApp(){
+      const url=document.getElementById('preview-image').src;
+      const blob=await(await fetch(url)).blob();
+      const file=new File([blob],'my_look.png',{type:'image/png'});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:'Jewels AI',text:'My curated look ✨'});
+      } else {
+        window.open(`https://wa.me/919743600311?text=${encodeURIComponent("I'm interested in this piece from Jewels AI! ✨")}`,'_blank');
+      }
+    }
+
+    window.addEventListener('load',()=>{
+      setTimeout(()=>{
+        const a=document.querySelector('.cat.active');
+        if(a) handleHUDClick(a.dataset.type,a);
+      },1200);
     });
   </script>
 </body>

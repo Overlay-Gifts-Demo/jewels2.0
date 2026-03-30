@@ -3,8 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>JEWELS-AI | Prism UI Fixed</title>
-  
+  <title>JEWELS · AI — Virtual Atelier</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Cinzel:wght@400;600&family=EB+Garamond:wght@300;400&display=swap" rel="stylesheet">
+
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -12,192 +15,568 @@
 
   <style>
     :root {
-      --prism-gold: #FFD700;
-      --deep-void: #000;
+      --g0: #FFF8DC;
+      --g1: #EEC96B;
+      --g2: #C9A84C;
+      --g3: #8C6A1A;
+      --g4: #3D2B06;
+      --ink:  #06060A;
+      --ink2: #101018;
+      --ink3: #1C1C28;
+      --glass: rgba(10,10,16,0.78);
+      --border-gold:   rgba(201,168,76,0.22);
+      --border-bright: rgba(238,201,107,0.5);
+      --text:  #F5EDCF;
+      --muted: rgba(245,237,207,0.42);
+      --ff-head: 'Cinzel', serif;
+      --ff-disp: 'Playfair Display', serif;
+      --ff-body: 'EB Garamond', serif;
     }
 
-    body, html {
-      margin: 0; padding: 0;
-      background: var(--deep-void);
-      color: white; font-family: sans-serif;
-      overflow: hidden; height: 100vh;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%; overflow: hidden;
+      background: var(--ink);
+      color: var(--text);
+      font-family: var(--ff-body);
+      cursor: none;
     }
 
-    #video-container { position: fixed; inset: 0; z-index: 0; }
-    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    /* CURSOR */
+    #cursor {
+      position: fixed; z-index: 9999; pointer-events: none;
+      width: 20px; height: 20px;
+      border: 1.5px solid var(--g1);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: transform 0.12s, opacity 0.2s;
+      mix-blend-mode: difference;
+    }
+    #cursor-dot {
+      position: fixed; z-index: 9999; pointer-events: none;
+      width: 4px; height: 4px;
+      background: var(--g0); border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* GRAIN */
+    body::after {
+      content: ''; position: fixed; inset: 0; z-index: 9000;
+      pointer-events: none; opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+      background-size: 256px;
+    }
+
+    /* STAGE */
+    #stage { position: fixed; inset: 0; z-index: 0; background: #000; }
+    video, canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%; object-fit: cover;
+    }
     #webcam { transform: scaleX(-1); }
 
-    /* SIDE NAVIGATION */
+    #stage::before {
+      content: ''; position: absolute; inset: 0; z-index: 5; pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 80% at 50% 50%, transparent 30%, rgba(6,6,10,0.82) 100%),
+        linear-gradient(to right, rgba(6,6,10,0.5) 0%, transparent 28%, transparent 72%, rgba(6,6,10,0.5) 100%);
+    }
+
+    /* HEADER */
+    #header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 26px;
+      background: linear-gradient(180deg, rgba(6,6,10,0.92) 0%, transparent 100%);
+      animation: slideDown 1s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    #brand-name {
+      font-family: var(--ff-head);
+      font-size: 17px; font-weight: 600; letter-spacing: 0.45em;
+      background: linear-gradient(135deg, var(--g0) 0%, var(--g2) 55%, var(--g3) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+
+    #brand-sub {
+      font-family: var(--ff-body); font-size: 8px; font-weight: 300;
+      letter-spacing: 0.55em; text-transform: uppercase; color: var(--muted);
+      margin-top: 2px;
+    }
+
+    #header-deco {
+      flex: 1; margin: 0 24px; height: 1px;
+      background: linear-gradient(to right, transparent, var(--border-bright), transparent);
+    }
+
+    #live-pill {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 16px;
+      border: 1px solid var(--border-gold); border-radius: 999px;
+      background: rgba(10,10,16,0.6); backdrop-filter: blur(20px);
+      font-family: var(--ff-body); font-size: 9px;
+      letter-spacing: 0.4em; text-transform: uppercase; color: var(--muted);
+    }
+
+    #live-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--g1); box-shadow: 0 0 6px var(--g1);
+      animation: blink 2.4s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%,100% { opacity:1; } 50% { opacity:0.35; }
+    }
+
+    /* RIGHT DOCK */
     #dock {
-      position: fixed; right: 20px; top: 50%;
+      position: fixed; right: 22px; top: 50%;
       transform: translateY(-50%);
+      z-index: 300;
       display: flex; flex-direction: column;
-      gap: 12px; z-index: 100;
+      align-items: center; gap: 10px;
+      animation: slideLeft 1.1s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    #dock::before {
+      content: ''; display: block;
+      width: 1px; height: 46px;
+      background: linear-gradient(to bottom, transparent, var(--border-bright));
+      margin-bottom: 4px;
+    }
+    #dock::after {
+      content: ''; display: block;
+      width: 1px; height: 46px;
+      background: linear-gradient(to top, transparent, var(--border-bright));
+      margin-top: 4px;
     }
 
     .cat {
-      width: 65px; height: 65px;
-      background: rgba(0,0,0,0.7);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
+      width: 62px; padding: 16px 0;
       display: flex; align-items: center; justify-content: center;
-      cursor: pointer; font-size: 11px; font-weight: bold;
-      text-transform: uppercase; color: #fff;
-      transition: 0.3s;
-      text-align: center;
-    }
-    .cat.active { background: var(--prism-gold); color: #000; transform: scale(1.1) translateX(-5px); }
-
-    /* SNAPSHOT BUTTON */
-    .snap-btn {
-      width: 65px; height: 65px; background: white; border: none; border-radius: 50%;
-      cursor: pointer; font-size: 24px; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-top: 10px;
+      background: var(--glass);
+      border: 1px solid var(--border-gold);
+      border-radius: 16px;
+      backdrop-filter: blur(24px);
+      cursor: none; position: relative; overflow: hidden;
+      transition: all 0.45s cubic-bezier(0.34,1.56,0.64,1);
     }
 
-    #jewelry-options {
-      position: fixed; bottom: 30px; left: 20px; right: 100px;
-      height: 120px; display: flex; align-items: center;
-      overflow-x: auto; gap: 15px; padding: 10px;
-      z-index: 90; background: rgba(0,0,0,0.3); border-radius: 20px;
-    }
-    #jewelry-options::-webkit-scrollbar { display: none; }
-
-    #jewelry-options img, .thumb-btn {
-      min-width: 90px !important; max-width: 90px !important; height: 90px !important;
-      background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 15px; object-fit: contain; cursor: pointer; transition: 0.3s;
+    .cat span {
+      writing-mode: vertical-rl; transform: rotate(180deg);
+      font-family: var(--ff-head); font-size: 8px; font-weight: 400;
+      letter-spacing: 0.3em; text-transform: uppercase;
+      color: var(--muted); transition: color 0.3s;
+      position: relative; z-index: 1;
     }
 
-    /* PREVIEW MODAL */
+    .cat::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(180deg, var(--g0) 0%, var(--g2) 55%, var(--g3) 100%);
+      opacity: 0; transition: opacity 0.4s;
+    }
+
+    .cat.active {
+      border-color: var(--g1); padding: 24px 0;
+      box-shadow: 0 0 28px rgba(201,168,76,0.3), 0 0 0 1px rgba(238,201,107,0.15);
+      transform: translateX(-5px);
+    }
+    .cat.active::before { opacity: 1; }
+    .cat.active span { color: var(--ink); font-weight: 600; }
+    .cat:hover:not(.active) { border-color: rgba(201,168,76,0.45); transform: translateX(-4px); }
+
+    /* SNAP */
+    #snap-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 6px;
+    }
+
+    #snap-btn {
+      width: 62px; height: 62px; border-radius: 50%; border: none; cursor: none;
+      position: relative;
+      background: conic-gradient(var(--g0) 0deg, var(--g1) 60deg, var(--g2) 120deg, var(--g3) 180deg, var(--g2) 240deg, var(--g1) 300deg, var(--g0) 360deg);
+      box-shadow: 0 0 40px rgba(201,168,76,0.4), 0 6px 20px rgba(0,0,0,0.6);
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.3s;
+    }
+    #snap-btn:hover { transform: scale(1.1); box-shadow: 0 0 60px rgba(201,168,76,0.6), 0 8px 28px rgba(0,0,0,0.7); }
+    #snap-btn:active { transform: scale(0.92); }
+
+    #snap-inner {
+      position: absolute; inset: 5px; border-radius: 50%;
+      background: var(--ink2);
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    #cam-icon {
+      width: 24px; height: 20px;
+      border: 2px solid var(--g1); border-radius: 5px; position: relative;
+    }
+    #cam-icon::before {
+      content: ''; position: absolute;
+      width: 8px; height: 8px; border: 2px solid var(--g1); border-radius: 50%;
+      top: 50%; left: 50%; transform: translate(-50%,-50%);
+    }
+    #cam-icon::after {
+      content: ''; position: absolute;
+      width: 6px; height: 4px; background: var(--g1); border-radius: 1px 1px 0 0;
+      top: -5px; left: 4px;
+    }
+
+    #snap-label {
+      writing-mode: vertical-rl; transform: rotate(180deg);
+      font-family: var(--ff-body); font-size: 7.5px;
+      letter-spacing: 0.5em; text-transform: uppercase; color: var(--muted);
+    }
+
+    /* CAROUSEL */
+    #tray-wrap {
+      position: fixed; bottom: 0; left: 0; right: 100px;
+      z-index: 200; padding: 0 22px 26px;
+      animation: slideUp 1.2s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    #tray-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 10px; padding: 0 4px;
+    }
+
+    #tray-title {
+      font-family: var(--ff-head); font-size: 9px; font-weight: 400;
+      letter-spacing: 0.5em; text-transform: uppercase; color: var(--muted);
+    }
+
+    #tray-line { flex:1; height:1px; background: linear-gradient(to right, var(--border-bright), transparent); }
+
+    #tray-count {
+      font-family: var(--ff-body); font-size: 9px;
+      letter-spacing: 0.2em; color: var(--muted);
+    }
+
+    #carousel {
+      display: flex; gap: 12px; align-items: flex-end;
+      overflow-x: auto; overflow-y: hidden;
+      padding: 12px 14px 14px;
+      background: linear-gradient(135deg, rgba(14,14,22,0.9), rgba(8,8,14,0.88));
+      border: 1px solid var(--border-gold); border-radius: 20px;
+      backdrop-filter: blur(40px) saturate(1.3);
+      scrollbar-width: none;
+      -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+    }
+    #carousel::-webkit-scrollbar { display: none; }
+
+    .jcard {
+      flex-shrink: 0; width: 80px; height: 80px;
+      background: linear-gradient(145deg, var(--ink3), var(--ink2));
+      border: 1px solid var(--border-gold); border-radius: 16px;
+      overflow: hidden; cursor: none;
+      transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1);
+      position: relative;
+    }
+
+    .jcard img { width:100%; height:100%; object-fit:contain; padding:9px; }
+
+    .jcard:hover {
+      transform: translateY(-10px) scale(1.07);
+      border-color: var(--g1);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.55), 0 0 20px rgba(201,168,76,0.22);
+    }
+
+    .jcard.active {
+      border-color: var(--g0); transform: translateY(-7px);
+      box-shadow: 0 0 0 2px var(--g2), 0 14px 30px rgba(201,168,76,0.28);
+    }
+
+    .jcard.active::after {
+      content: '✦'; position: absolute; top:3px; right:5px;
+      font-size:8px; color: var(--g1);
+    }
+
+    .jcard-skeleton {
+      background: linear-gradient(90deg, var(--ink2) 25%, var(--ink3) 50%, var(--ink2) 75%);
+      background-size: 300% 100%;
+      animation: shimmer 1.8s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { background-position:200% 0; } 100% { background-position:-200% 0; }
+    }
+
+    /* FLASH */
+    #flash {
+      position: fixed; inset: 0; z-index: 8000;
+      background: #fff; opacity: 0; pointer-events: none;
+    }
+
+    /* MODAL */
     #preview-modal {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95);
-      z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
+      display: none; position: fixed; inset: 0; z-index: 7000;
+      background: rgba(4,4,8,0.97);
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 28px; backdrop-filter: blur(50px);
     }
-    #preview-image { max-width: 90%; max-height: 65%; border-radius: 15px; border: 2px solid var(--prism-gold); }
-    
-    .preview-actions { margin-top: 25px; display: flex; gap: 15px; width: 100%; max-width: 400px; }
-    .preview-actions button {
-      flex: 1; padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;
+    #preview-modal.open { display: flex; animation: fadeIn 0.35s ease; }
+
+    #modal-ornament {
+      font-family: var(--ff-head); font-size: 10px;
+      letter-spacing: 0.5em; text-transform: uppercase; color: var(--muted);
+      margin-bottom: 18px;
+      display: flex; align-items: center; gap: 16px;
     }
-    .btn-dl { background: var(--prism-gold); color: black; }
-    .btn-wa { background: #25D366; color: white; }
-    .close-preview { position: absolute; top: 30px; right: 30px; font-size: 40px; cursor: pointer; }
-    
-    #flash-overlay { position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 999; }
+    #modal-ornament::before, #modal-ornament::after {
+      content: '──── ✦ ────'; color: var(--g3); letter-spacing: 0.15em;
+    }
+
+    #preview-frame {
+      position: relative; border-radius: 18px; overflow: hidden;
+      border: 1px solid var(--border-bright);
+      box-shadow: 0 50px 100px rgba(0,0,0,0.85), 0 0 0 1px var(--g4);
+      max-width: 88vw; max-height: 58vh;
+    }
+    #preview-frame::before, #preview-frame::after {
+      content: ''; position: absolute; z-index:2;
+      width:24px; height:24px; border-color: var(--g0); border-style:solid;
+    }
+    #preview-frame::before { top:8px; left:8px; border-width:2px 0 0 2px; }
+    #preview-frame::after  { bottom:8px; right:8px; border-width:0 2px 2px 0; }
+
+    #preview-image { display:block; max-width:100%; max-height:58vh; }
+
+    #preview-name {
+      margin-top: 14px;
+      font-family: var(--ff-disp); font-style: italic;
+      font-size: 15px; letter-spacing: 0.15em; color: var(--g1);
+    }
+
+    #preview-actions { margin-top: 22px; display: flex; gap: 14px; }
+
+    .p-btn {
+      padding: 12px 32px; border-radius: 999px; border: none; cursor: none;
+      font-family: var(--ff-head); font-size: 9px; font-weight: 600;
+      letter-spacing: 0.35em; text-transform: uppercase;
+      transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .p-btn:hover { transform: translateY(-3px); }
+
+    .p-btn-gold {
+      background: linear-gradient(135deg, var(--g0), var(--g2));
+      color: var(--ink);
+      box-shadow: 0 8px 24px rgba(201,168,76,0.35);
+    }
+
+    .p-btn-wa {
+      background: transparent;
+      border: 1px solid rgba(37,211,102,0.45);
+      color: #7ef5a8;
+    }
+    .p-btn-wa:hover { background: rgba(37,211,102,0.1); border-color: rgba(37,211,102,0.7); }
+
+    #close-btn {
+      position: absolute; top: 22px; right: 26px;
+      width: 38px; height: 38px;
+      border: 1px solid var(--border-gold); border-radius: 50%;
+      background: transparent; cursor: none;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 16px;
+      transition: all 0.3s;
+    }
+    #close-btn:hover {
+      border-color: var(--g1); color: var(--g0);
+      transform: rotate(90deg);
+      box-shadow: 0 0 14px rgba(201,168,76,0.25);
+    }
+
+    @keyframes slideDown {
+      from { opacity:0; transform:translateY(-18px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes slideLeft {
+      from { opacity:0; transform:translate(24px,-50%); }
+      to   { opacity:1; transform:translate(0,-50%); }
+    }
+    @keyframes slideUp {
+      from { opacity:0; transform:translateY(22px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity:0; } to { opacity:1; }
+    }
+
+    @media (max-width:480px) {
+      .cat { width:52px; }
+      #snap-btn { width:52px; height:52px; }
+      #tray-wrap { right:86px; padding:0 12px 22px; }
+      .jcard { width:68px; height:68px; }
+    }
   </style>
 </head>
 <body>
 
-  <div id="app">
-    <div id="flash-overlay"></div>
+  <div id="cursor"></div>
+  <div id="cursor-dot"></div>
+  <div id="flash"></div>
 
-    <div id="video-container">
-      <video id="webcam" autoplay playsinline muted></video>
-      <canvas id="overlay"></canvas>
-      <video id="remote-video" autoplay playsinline></video>
+  <div id="stage">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <video id="remote-video" autoplay playsinline></video>
+  </div>
+
+  <header id="header">
+    <div>
+      <div id="brand-name">Jewels · AI</div>
+      <div id="brand-sub">Virtual Atelier</div>
     </div>
-
-    <div id="dock">
-      <div class="cat active" onclick="handleCategoryClick('earrings', this)">Earrings</div>
-      <div class="cat" onclick="handleCategoryClick('chains', this)">Chains</div>
-      <div class="cat" onclick="handleCategoryClick('rings', this)">Rings</div>
-      <div class="cat" onclick="handleCategoryClick('bangles', this)">Bangles</div>
-      <button class="snap-btn" onclick="captureProcess()">📸</button>
+    <div id="header-deco"></div>
+    <div id="live-pill">
+      <div id="live-dot"></div>
+      <span>AR Live</span>
     </div>
+  </header>
 
-    <div id="jewelry-options"></div>
+  <nav id="dock">
+    <div class="cat active" data-type="earrings" onclick="handleCategoryClick('earrings',this)"><span>Earrings</span></div>
+    <div class="cat" data-type="chains"   onclick="handleCategoryClick('chains',this)"><span>Chains</span></div>
+    <div class="cat" data-type="rings"    onclick="handleCategoryClick('rings',this)"><span>Rings</span></div>
+    <div class="cat" data-type="bangles"  onclick="handleCategoryClick('bangles',this)"><span>Bangles</span></div>
+    <div id="snap-wrap">
+      <div id="snap-btn" onclick="captureProcess()">
+        <div id="snap-inner"><div id="cam-icon"></div></div>
+      </div>
+      <div id="snap-label">Capture</div>
+    </div>
+  </nav>
 
-    <div id="preview-modal">
-        <span class="close-preview" onclick="closePreview()">&times;</span>
-        <img id="preview-image" src="">
-        <div class="preview-actions">
-            <button class="btn-dl" onclick="downloadBakedImage()">📥 DOWNLOAD</button>
-            <button class="btn-wa" onclick="shareToWhatsApp()">🟢 WHATSAPP</button>
-        </div>
+  <div id="tray-wrap">
+    <div id="tray-header">
+      <div id="tray-title">Collection</div>
+      <div id="tray-line"></div>
+      <div id="tray-count">— Select a piece</div>
+    </div>
+    <div id="carousel"></div>
+  </div>
+
+  <div id="preview-modal">
+    <button id="close-btn" onclick="closePreview()">✕</button>
+    <div id="modal-ornament">Your Signature Look</div>
+    <div id="preview-frame">
+      <img id="preview-image" src="" alt="Your Look">
+    </div>
+    <div id="preview-name">Curated Selection</div>
+    <div id="preview-actions">
+      <button class="p-btn p-btn-gold" onclick="downloadBakedImage()">↓ &nbsp;Download</button>
+      <button class="p-btn p-btn-wa"   onclick="shareToWhatsApp()">WhatsApp</button>
     </div>
   </div>
 
   <script src="core.js"></script>
-
   <script>
-    function handleCategoryClick(type, element) {
-        document.querySelectorAll('.cat').forEach(nav => nav.classList.remove('active'));
-        element.classList.add('active');
-        if (typeof selectJewelryType === "function") selectJewelryType(type);
+    /* CURSOR */
+    const cursor = document.getElementById('cursor');
+    const dot    = document.getElementById('cursor-dot');
+    document.addEventListener('mousemove', e => {
+      cursor.style.left = e.clientX+'px'; cursor.style.top = e.clientY+'px';
+      dot.style.left    = e.clientX+'px'; dot.style.top    = e.clientY+'px';
+    });
+    document.querySelectorAll('.cat,[onclick],button').forEach(el => {
+      el.addEventListener('mouseenter', () => cursor.style.transform = 'translate(-50%,-50%) scale(1.8)');
+      el.addEventListener('mouseleave', () => cursor.style.transform = 'translate(-50%,-50%) scale(1)');
+    });
+
+    /* SKELETONS */
+    function renderSkeletons(n=7) {
+      const t = document.getElementById('carousel'); t.innerHTML='';
+      for (let i=0;i<n;i++) { const c=document.createElement('div'); c.className='jcard jcard-skeleton'; t.appendChild(c); }
     }
 
-    // Capture & Merge Logic
+    window.populateCarousel = function(items) {
+      const t = document.getElementById('carousel'); t.innerHTML='';
+      document.getElementById('tray-count').textContent = `— ${items.length} pieces`;
+      items.forEach(item => {
+        const card=document.createElement('div'); card.className='jcard';
+        const img=document.createElement('img'); img.src=item.src; img.alt=item.label||'';
+        card.appendChild(img);
+        card.onclick = () => {
+          document.querySelectorAll('.jcard').forEach(c=>c.classList.remove('active'));
+          card.classList.add('active');
+          window.currentJewelry=item.src;
+          document.getElementById('preview-name').textContent=(item.label||item.src.split('/').pop().split('.')[0]).replace(/_/g,' ');
+          if (typeof selectJewelry==='function') selectJewelry(item.src);
+        };
+        t.appendChild(card);
+      });
+    };
+
+    renderSkeletons();
+
+    /* CATEGORY */
+    function handleCategoryClick(type, el) {
+      document.querySelectorAll('.cat').forEach(c=>c.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('tray-count').textContent='— Select a piece';
+      renderSkeletons();
+      if (typeof selectJewelryType==='function') selectJewelryType(type, el);
+    }
+
+    /* CAPTURE */
     function captureProcess() {
-        const flash = document.getElementById('flash-overlay');
-        flash.style.opacity = '1';
-        setTimeout(() => flash.style.opacity = '0', 150);
+      const flash=document.getElementById('flash');
+      flash.style.transition='none'; flash.style.opacity='1';
+      requestAnimationFrame(()=>{
+        flash.style.transition='opacity 0.18s ease'; flash.style.opacity='0';
+      });
 
-        const video = document.getElementById('webcam');
-        const overlay = document.getElementById('overlay');
-        
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
+      const video=document.getElementById('webcam');
+      const overlay=document.getElementById('overlay');
+      const cvs=document.createElement('canvas');
+      const ctx=cvs.getContext('2d');
+      cvs.width=video.videoWidth||1280; cvs.height=video.videoHeight||720;
 
-        // 1. Draw Camera (Mirrored)
-        ctx.save();
-        ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        ctx.restore();
+      ctx.save(); ctx.translate(cvs.width,0); ctx.scale(-1,1);
+      ctx.drawImage(video,0,0,cvs.width,cvs.height); ctx.restore();
+      ctx.drawImage(overlay,0,0,cvs.width,cvs.height);
 
-        // 2. Draw Jewelry
-        ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+      const bH=108, y0=cvs.height-bH;
+      const g=ctx.createLinearGradient(0,y0,0,cvs.height);
+      g.addColorStop(0,'rgba(6,6,10,0.88)'); g.addColorStop(1,'rgba(10,8,4,0.97)');
+      ctx.fillStyle=g; ctx.fillRect(0,y0,cvs.width,bH);
+      ctx.strokeStyle='#C9A84C'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(0,y0+1); ctx.lineTo(cvs.width,y0+1); ctx.stroke();
 
-        // 3. Bake Description
-        const fileName = window.currentJewelry ? window.currentJewelry.split('/').pop().split('.')[0] : "Product_Selection";
-        const boxH = 120;
-        ctx.fillStyle = "rgba(0,0,0,0.8)";
-        ctx.fillRect(0, canvas.height - boxH, canvas.width, boxH);
-        ctx.strokeStyle = "#FFD700"; ctx.lineWidth = 4;
-        ctx.strokeRect(0, canvas.height - boxH, canvas.width, boxH);
+      ctx.font='600 22px Georgia,serif'; ctx.fillStyle='#EEC96B'; ctx.letterSpacing='8px';
+      ctx.fillText('JEWELS · AI',32,y0+40);
+      ctx.font='300 10px Georgia,serif'; ctx.fillStyle='rgba(245,237,207,0.45)'; ctx.letterSpacing='5px';
+      ctx.fillText('VIRTUAL ATELIER',33,y0+60);
+      const item=window.currentJewelry
+        ? window.currentJewelry.split('/').pop().split('.')[0].replace(/_/g,' ')
+        : 'Curated Selection';
+      ctx.font='300 13px Georgia,serif'; ctx.fillStyle='rgba(245,237,207,0.7)'; ctx.letterSpacing='2px';
+      ctx.fillText('Item: '+item,32,y0+87);
 
-        ctx.fillStyle = "#FFD700"; ctx.font = "bold 30px Arial";
-        ctx.fillText("Product Description", 30, canvas.height - 70);
-        ctx.fillStyle = "white"; ctx.font = "24px Arial";
-        ctx.fillText("Item Code: " + fileName, 30, canvas.height - 30);
-
-        document.getElementById('preview-image').src = canvas.toDataURL("image/png");
-        document.getElementById('preview-modal').style.display = 'flex';
+      document.getElementById('preview-image').src=cvs.toDataURL('image/png');
+      document.getElementById('preview-modal').classList.add('open');
     }
 
-    function closePreview() { document.getElementById('preview-modal').style.display = 'none'; }
+    function closePreview() { document.getElementById('preview-modal').classList.remove('open'); }
 
     function downloadBakedImage() {
-        const link = document.createElement('a');
-        link.download = "My_Jewels_Look.png";
-        link.href = document.getElementById('preview-image').src;
-        link.click();
+      const a=document.createElement('a'); a.download='JewelsAI_Look.png';
+      a.href=document.getElementById('preview-image').src; a.click();
     }
 
     async function shareToWhatsApp() {
-        const dataUrl = document.getElementById('preview-image').src;
-        const blob = await (await fetch(dataUrl)).blob();
-        const file = new File([blob], 'my_look.png', { type: 'image/png' });
-
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-                files: [file],
-                title: 'Jewels AI',
-                text: 'Check out my look! ✨'
-            });
-        } else {
-            window.open(`https://wa.me/919743600311?text=${encodeURIComponent("Check out my Jewels AI look!")}`, '_blank');
-        }
+      const dataUrl=document.getElementById('preview-image').src;
+      const blob=await(await fetch(dataUrl)).blob();
+      const file=new File([blob],'my_look.png',{type:'image/png'});
+      if (navigator.canShare&&navigator.canShare({files:[file]})) {
+        await navigator.share({files:[file],title:'Jewels AI',text:'My curated look ✨'});
+      } else {
+        window.open(`https://wa.me/919743600311?text=${encodeURIComponent('Check out my Jewels AI look! ✨')}`,'_blank');
+      }
     }
 
-    window.addEventListener('load', () => {
-        setTimeout(() => {
-            const activeBtn = document.querySelector('.cat.active');
-            if (activeBtn) handleCategoryClick('earrings', activeBtn);
-        }, 1000); 
+    window.addEventListener('load',()=>{
+      setTimeout(()=>{ const a=document.querySelector('.cat.active'); if(a) handleCategoryClick(a.dataset.type,a); },1000);
     });
   </script>
 </body>
